@@ -38,17 +38,10 @@ class Pandaseq(CommandLineApplication):
         '-t': ValuedParameter('-', 't', Delimiter=' '),
         '-T': ValuedParameter('-', 'T', Delimiter=' '),
         }
-    _input_handler = '_input_as_parameter'
     _command = 'pandaseq'
 
     def _accept_exit_status(self, exit_status):
         """Accept an exit status of 0 for the pandaseq program.
         """
         return exit_status == 0
-    
-    def _input_as_parameter(self, data):
-        """ data is a hash that gets passed through to __call__
-        """
-        self.Parameters['-f'].on(data['forward'])
-        self.Parameters['-r'].on(data['reverse'])
-        return ''
+

@@ -57,15 +57,19 @@ from pandaseq import Pandaseq
 ###############################################################################
 ###############################################################################
 ###############################################################################
-
+def panda(args):
+    panda = Pandaseq()
+    panda.Parameters['-o'].on(args.olap)
+    panda.Parameters['-l'].on(args.minlen)
+    panda.Parameters['-f'].on(args.read_1)  
+    panda.Parameters['-r'].on(args.read_2)
+    return panda()
+    
 def doWork( args ):
     """ Main wrapper"""
 
     # generate fragment consensus sequences - pandaseq
-    panda = Pandaseq()
-    panda.Parameters['-o'].isOn(30)
-    panda.Parameters['-l'].isOn(350)
-    panda_result = panda({'forward': args.forward, 'reverse': args.reverse})
+    panda_out = panda(args)
 
     # dataset reduction - velvet or cd-hit
 

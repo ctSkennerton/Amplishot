@@ -273,15 +273,20 @@ class Velvetg(Velvet):
     
     def _get_result_paths(self, data):
         result = {}
-        out_files = ['Log','contigs.fa', 'stats.txt']
+        out_files = {
+                     'log': 'Log',
+                     'contigs': 'contigs.fa', 
+                     'stats': 'stats.txt'
+                    }
         if self.Parameters['-amos_file'].isOn():
-            out_files.append('velvet_asm.afg')
+            out_files['amos'] = 'velvet_asm.afg'
         
         if self.Parameters['-unused_reads'].isOn():
-            out_files.append('UnusedReads.fa')
+            out_files['unused_reads'] = 'UnusedReads.fa'
 
-        for outfile in out_files:
-            result[outfile] = ResultPath(Path=self.WorkingDir+outfile)
+        for name, outfile in out_files.items():
+            result[name] = ResultPath(Path=self.WorkingDir+outfile,
+                    IsWritten=True)
 
         return result
 

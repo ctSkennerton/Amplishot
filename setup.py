@@ -12,5 +12,5 @@ setup(
     description='Amplishot',
     long_description=open('README.txt').read(),
     install_requires=[],
-    ext_modules = Extension('pywumanber'['amplishot/pywumanber/wumanber_impl.c'])
+    ext_modules = [Extension('pywumanber',['amplishot/pywumanber/wumanber_impl.c'])]
 )

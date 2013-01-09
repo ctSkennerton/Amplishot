@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 ###############################################################################
 #
 # amplishot.py - Pipeline for generating full-length 16S sequences and performing
@@ -33,7 +33,8 @@ __status__ = "Development"
 
 import argparse
 import sys
-from pandaseq import Pandaseq
+from amplishot.pandaseq import Pandaseq
+from amplishot.pywumanber.pywumanber import WuManber
 #import os
 #import errno
 

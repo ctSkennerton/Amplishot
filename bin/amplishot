@@ -33,8 +33,9 @@ __status__ = "Development"
 
 import argparse
 import sys
-from amplishot.pandaseq import Pandaseq
-from amplishot.pywumanber.pywumanber import WuManber
+#import amplishot
+from amplishot import pandaseq
+import amplishot.pywumanber.pywumanber as pywumanber
 #import os
 #import errno
 
@@ -59,7 +60,7 @@ from amplishot.pywumanber.pywumanber import WuManber
 ###############################################################################
 ###############################################################################
 def panda(args):
-    panda = Pandaseq()
+    panda = pandaseq.Pandaseq()
     panda.Parameters['-o'].on(args.olap)
     panda.Parameters['-l'].on(args.minlen)
     panda.Parameters['-f'].on(args.read_1)  
@@ -68,7 +69,7 @@ def panda(args):
     
 def doWork( args ):
     """ Main wrapper"""
-
+    wu = pywumanber.WuManber(['test','one'])
     # generate fragment consensus sequences - pandaseq
     panda_out = panda(args)
 
@@ -97,7 +98,7 @@ if __name__ == '__main__':
     args = parser.parse_args()        
 
     # do what we came here to do
-    return doWork(args)
+    doWork(args)
 
 ###############################################################################
 ###############################################################################

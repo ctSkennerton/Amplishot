@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 ###############################################################################
 #
 # amplishot.py - Pipeline for generating full-length 16S sequences and performing
@@ -33,11 +33,12 @@ __status__ = "Development"
 
 import argparse
 import sys
-from pandaseq import Pandaseq
 from cogent import DNA, LoadSeqs
 import cogent.core.moltype
 from cogent.parse.fastq import MinimalFastqParser
 
+from amplishot import pandaseq
+import amplishot.pywumanber.pywumanber as pywumanber
 #import os
 #import errno
 
@@ -60,7 +61,7 @@ from cogent.parse.fastq import MinimalFastqParser
 ###############################################################################
 ###############################################################################
 def panda(args):
-    panda = Pandaseq()
+    panda = pandaseq.Pandaseq()
     panda.Parameters['-o'].on(args.olap)
     panda.Parameters['-l'].on(args.minlen)
     panda.Parameters['-f'].on(args.read_1)  
@@ -114,7 +115,7 @@ def generate_unambiguous_sequences():
 
 def doWork( args ):
     """ Main wrapper"""
-
+    wu = pywumanber.WuManber(['test','one'])
     # generate fragment consensus sequences - pandaseq
     #panda_out = panda(args)
 

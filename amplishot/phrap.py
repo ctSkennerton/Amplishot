@@ -201,11 +201,14 @@ class Phrap(CommandLineApplication):
     def _get_result_paths(self, data):
         oprefix = getattr(self,input_handler)(data)
         results = {
-                'contigs': ResultPath(Path=oprefix+'.contigs', IsWritten=True)
-                'contigsQual': ResultPath(Path=oprefix+'.contigs.qual', IsWritten=True)
-                'log': ResultPath(Path=oprefix+'.log', IsWritten=True)
-                'problems': ResultPath(Path=oprefix+'.problems', IsWritten=True)
-                'problemsQual': ResultPath(Path=oprefix+'.problems.qual', IsWritten=True)
+                'contigs': ResultPath(Path=oprefix+'.contigs', IsWritten=True),
+                'contigsQual': ResultPath(Path=oprefix+'.contigs.qual',
+                    IsWritten=True),
+                'log': ResultPath(Path=oprefix+'.log', IsWritten=True),
+                'problems': ResultPath(Path=oprefix+'.problems',
+                    IsWritten=True),
+                'problemsQual': ResultPath(Path=oprefix+'.problems.qual',
+                    IsWritten=True),
                 'singlets': ResultPath(Path=oprefix+'.singlets', IsWritten=True)
                 }
         return results

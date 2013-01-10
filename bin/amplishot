@@ -33,12 +33,13 @@ __status__ = "Development"
 
 import argparse
 import sys
-from cogent import DNA, LoadSeqs
-import cogent.core.moltype
+import tempfile
+import os
+import shutil
 from cogent.parse.fastq import MinimalFastqParser
 
-from amplishot import pandaseq
-import amplishot.pywumanber.pywumanber as pywumanber
+from amplishot import pandaseq, conserved_sequences
+import amplishot.search.wumanber as wumanber
 #import os
 #import errno
 
@@ -68,67 +69,59 @@ def panda(args):
     panda.Parameters['-r'].on(args.read_2)
     return panda()
 
-def disambiguate(sequence):
-    index = sequence.firstDegenerate()
-    if index is None:
-        return sequence
+def make_partition_files(names, directory=None):
+    ret = dict()
+    for i in names:
+        os.mkdir(os.path.join(directory,i))
+        ret[i] = open(os.path.join(directory,i,'in.fa'), 'w')
 
-    head = sequence[:index]
-    tail = sequence[index+1:]
-    ret_seqs = list()
+    os.mkdir(os.path.join(directory,'nomatch'))
+    ret['nomatch'] = open(os.path.join(directory, 'nomatch','in.fa'), 'w')
+        
+    return ret
 
-    for unambiguous in cogent.core.moltype.IUPAC_DNA_ambiguities[sequence[index]]:
-        ret = disambiguate(head+unambiguous+tail)
-        if isinstance(ret, list):
-            ret_seqs.extend(ret)
-        else:
-            ret_seqs.append(ret)
-    return ret_seqs
+def partition(infp, tempdir=None):
+    """split the dataset based on the presence of conserved marker genes
+       infile - input file object
+       partitionFiles - a dictionary containing the file names for outputing
+       partitioned fasta reads
+       tempdir - output directory for partitions, if not set makes a tempdir
+    """
+    if tempdir is None:
+        tempdir = tempfile.mkdtemp()
 
-def generate_unambiguous_sequences():
-    _CONSERVED_SEQUENCES = {
-        '357': 'CTGAGAYACGGHCCARACTCCTACGGGAGGCAGCAG',
-        '530': 'GGCTAAYTHYGTGCCAGCAGCCGCGGTAAKAC',
-        '787': 'CRAACRGGATTAGATACCCYGGTAGTCCW',
-        '926': 'AAACTYAAAKGAATTGRCGG',
-        '1114': 'GGTGSTGCATGGYTGTCGTCAGCTCGTGYCGTGA',
-        '1392': 'GGTGAATACGTTCCCGGGYCTTGYACNCAC'
-        }
+    tcs = conserved_sequences.ConservedSequences()
+    outfiles = make_partition_files(tcs.positions, tempdir)
+    seqs = tcs.conserved_sequences.keys()
+    wu = wumanber.WuManber(seqs)
+    count = 0
 
-    unambiguous_conserved_sequences = list()
-    rev_unambiguous_conserved_sequences = list()
-    for seq in _CONSERVED_SEQUENCES.values():
-        dnaseq = DNA.makeSequence(seq)
-        #print dnaseq, dnaseq.__class__
-        ret = disambiguate(dnaseq)
-        if isinstance(ret, list):
-            unambiguous_conserved_sequences.extend(ret)
-        else:
-            unambiguous_conserved_sequences.append(ret)
-
-    for i in unambiguous_conserved_sequences:
-        rev_unambiguous_conserved_sequences.append(i.rc())
-
-    unambiguous_conserved_sequences.extend(rev_unambiguous_conserved_sequences)
+    if isinstance(infp, str):
+        infp = open(infp)
     
-    return unambiguous_conserved_sequences
+    for name, seq, qual in MinimalFastqParser(infp, strict=False):
+        ret = wu.search_text(str(seq))
+        if ret is not None:
+            count += 1
+            outfiles[str(tcs.conserved_sequences[ret[1]].pos)].write('>%s\n%s\n' % (name, seq))
+        else:
+            outfiles['nomatch'].write('>%s\n%s\n' % (name, seq))
+
+    print 'Able to Partition %i reads into %i bins' % (count, len(outfiles) - 1)
+    for f in outfiles.values():
+        f.close()
+
+    return tempdir
 
 def doWork( args ):
     """ Main wrapper"""
-    wu = pywumanber.WuManber(['test','one'])
     # generate fragment consensus sequences - pandaseq
     #panda_out = panda(args)
 
     # dataset partitioning based on conserved primer presence
-    seqs = generate_unambiguous_sequences()
-    for i in seqs:
-        tree.add(str(i))
-    tree.make()
-    count = 0
-    with open(args.infile) as fp:
-        for name, seq, qual in MinimalFastqParser(fp):
-            pass
-    print count
+    partition_outdir = partition(args.infile, './')
+    
+    #shutil.rmtree(partition_outdir)
     # dataset reduction - cd-hit - each partition - threaded
 
     # generate overlaps - phrap - each partition - threaded

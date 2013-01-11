@@ -36,20 +36,17 @@ import sys
 import tempfile
 import os
 import shutil
+#import multiprocessing
+import threading
+import subprocess
+
 from cogent.parse.fastq import MinimalFastqParser
+from cogent.parse.fasta import MinimalFastaParser, MinimalFastaQualityParser
+from cogent.app.cd_hit import CD_HIT_EST
+import cogene.app.usearch as py_usearch
 
-from amplishot import pandaseq, conserved_sequences
+from amplishot import phrap, pandaseq, conserved_sequences
 import amplishot.search.wumanber as wumanber
-#import os
-#import errno
-
-#import numpy as np
-#np.seterr(all='raise')     
-
-#import matplotlib as mpl
-#import matplotlib.pyplot as plt
-#from mpl_toolkits.mplot3d import axes3d, Axes3D
-#from pylab import plot,subplot,axis,stem,show,figure
 
 
 ###############################################################################
@@ -71,14 +68,30 @@ def panda(args):
 
 def make_partition_files(names, directory=None):
     ret = dict()
+    outdirs = list()
     for i in names:
-        os.mkdir(os.path.join(directory,i))
+        try:
+            shutil.rmtree(os.path.join(directory,i))
+        except:
+            pass
+        finally:
+            os.mkdir(os.path.join(directory,i))
+        outdirs.append(os.path.join(directory,i))
         ret[i] = open(os.path.join(directory,i,'in.fa'), 'w')
+        ret[i+'qual'] = open(os.path.join(directory,i,'in.fa.qual'), 'w')
 
-    os.mkdir(os.path.join(directory,'nomatch'))
-    ret['nomatch'] = open(os.path.join(directory, 'nomatch','in.fa'), 'w')
+    try:
+        shutil.rmtree(os.path.join(directory,'nomatch'))
+    except:
+        pass
+    finally:
+        os.mkdir(os.path.join(directory,'nomatch'))
         
-    return ret
+    outdirs.append(os.path.join(directory,'nomatch'))
+    ret['nomatch'] = open(os.path.join(directory, 'nomatch','in.fa'), 'w')
+    ret['nomatchqual'] = open(os.path.join(directory, 'nomatch','in.fa.qual'), 'w')
+        
+    return ret, outdirs
 
 def partition(infp, tempdir=None):
     """split the dataset based on the presence of conserved marker genes
@@ -91,54 +104,144 @@ def partition(infp, tempdir=None):
         tempdir = tempfile.mkdtemp()
 
     tcs = conserved_sequences.ConservedSequences()
-    outfiles = make_partition_files(tcs.positions, tempdir)
+    outfiles, outdirs = make_partition_files(tcs.positions, tempdir)
+
     seqs = tcs.conserved_sequences.keys()
     wu = wumanber.WuManber(seqs)
     count = 0
-
+    total_count = 0
     if isinstance(infp, str):
         infp = open(infp)
     
     for name, seq, qual in MinimalFastqParser(infp, strict=False):
+        total_count += 1
+        qual = map(lambda x: ord(x)-33, qual)
+        qual_str = ' '.join(map(str,qual))
         ret = wu.search_text(str(seq))
         if ret is not None:
             count += 1
+            # write the fasta sequence file
             outfiles[str(tcs.conserved_sequences[ret[1]].pos)].write('>%s\n%s\n' % (name, seq))
+            # write the fasta qual file
+            outfiles[str(tcs.conserved_sequences[ret[1]].pos)+'qual'].write('>%s\n%s\n'
+                    % (name, qual_str))
         else:
             outfiles['nomatch'].write('>%s\n%s\n' % (name, seq))
+            outfiles['nomatchqual'].write('>%s\n%s\n' % (name, qual_str))
 
-    print 'Able to Partition %i reads into %i bins' % (count, len(outfiles) - 1)
     for f in outfiles.values():
         f.close()
 
-    return tempdir
+    if count == total_count:
+        shutil.rmtree(os.path.join(tempdir,'nomatch'))
+        outdirs.remove(os.path.join(tempdir,'nomatch'))
 
-def doWork( args ):
-    """ Main wrapper"""
-    # generate fragment consensus sequences - pandaseq
-    #panda_out = panda(args)
+    print 'Able to Partition %i (%.2f %%) reads into %i bins' % (count,
+            (count / total_count)*100, len(outdirs) - 1 )
+    return outdirs
 
-    # dataset partitioning based on conserved primer presence
-    partition_outdir = partition(args.infile, './')
+def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
+    #cd_hit = CD_HIT_EST(WorkingDir=workingdir, InputHandler="_input_as_path",
+    #        SuppressStdout=False, SuppressStderr=False, HALT_EXEC=False)
+    #cd_hit.Parameters['-i'].on(infile)
+    #cd_hit.Parameters['-o'].on(outfile)
+    #cd_hit.Parameters['-c'].on(0.98)
+    #cd_hit.Parameters['-M'].on(1000)
+    #results = cd_hit()
+    with open(os.devnull, "w") as fnull:
+        subprocess.call("cd "+workingdir+"; cd-hit-est -c 0.98 -M 1000 -o "+outfile+" -i "+infile,
+            stdout=fnull, stderr=fnull, shell=True)
+
+def extract_subset(headers, dbfp, parser=MinimalFastaParser, outfp=None, nameTransform=None):
+    """nameTransform is a function to modify the names of the output
+    """
+    return_dict = dict()
+    for name, seq in parser(dbfp):
+        if name in headers:
+            if nameTransform is None:
+                if outfp is None:
+                    return_dict[name] = seq
+                else:
+                    outfp.write('>%s\n%s\n' % (name, seq))
+            else:
+                if outfp is None:
+                    return_dict[nameTransform(name)] = seq
+                else:
+                    outfp.write('>%s\n%s\n' % (nameTransform(name), seq))
+    return return_dict
+
+
+def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa'):
+    clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
+    clustered_reads = set()
+    cd_hit_fasta = open(os.path.join(directory,cdhitout))
+    for name, seq in MinimalFastaParser(cd_hit_fasta):
+        clustered_reads.add(name)
+
+    cd_hit_fasta.close()
+    inqual = open(os.path.join(directory,cdhitin+'.qual'))
+
+    for name, qual in MinimalFastaQualityParser(inqual):
+        if name in clustered_reads:
+            clustered_qual.write('>%s\n%s\n' % (name, qual))
+    inqual.close()
+
+
+def phrap_assemble(workingdir, infile='cdhitout.fa', suppressStdout=True, suppressStderr=True):
+    #p = phrap.Phrap(SuppressStdout=True, SuppressStderr=True,
+    #        WorkingDir=workingdir, InputFirst=True, HALT_EXEC=True)
+    #p.Parameters['-minscore'].on(300)
+    #p(infile)
+    out = None
+    err = None
+    if suppressStdout:
+        out = open(os.devnull, "w")
+    if suppressStderr:
+        err = open(os.devnull, "w")
     
-    #shutil.rmtree(partition_outdir)
-    # dataset reduction - cd-hit - each partition - threaded
+    subprocess.call("cd "+workingdir+"; phrap "+infile+" -minscore 300",
+            stderr=err, stdout=out, shell=True)
 
-    # generate overlaps - phrap - each partition - threaded
+def combine_partitions(workingdir, outreads, outqual,
+        prefix='cdhitout.fa', outprefix='read'):
+    counter = 0
+    qualcounter = 0
+    # read in the contigs and rename them as we go
+    readsfp = open(os.path.join(workingdir,prefix+'.contigs'))
+    qualfp = open(os.path.join(workingdir,prefix+'.contigs.qual'))
+    singletsfp = open(os.path.join(workingdir, prefix+'.singlets'))
+    qualdbfp = open(os.path.join(workingdir, prefix+'.qual'))
+    
+    for name, seq in MinimalFastaParser(readsfp):
+        counter += 1
+        outreads.write('>%s\n%s\n' % (outprefix+str(counter), seq))
+    
+    for name, qual in MinimalFastaQualityParser(qualfp):
+        qualcounter+=1
+        outqual.write('>%s\n%s\n' % (outprefix+str(qualcounter), qual))
+    
+    if counter != qualcounter:
+        raise RuntimeError, "counter mismatch"
+        
+    singlets = dict()
+    for name, seq in MinimalFastaParser(singletsfp):
+        singlets[name] = [seq,'']
+    
+    for name, qual in MinimalFastaQualityParser(qualdbfp):
+        try:
+            singlets[name][1] = qual
+        except:
+            pass
+            
+    for name, data in singlets.items():
+        counter+=1
+        outqual.write('>%s\n%s\n' % (outprefix+str(counter), data[1]))
+        outreads.write('>%s\n%s\n' % (outprefix+str(counter), data[0]))
 
-    #combined assemblies - phrap
-
-    #chimera checking - uchime, decipher, chimeraslayer
-
-    #read alignment - bwa
-
-    #generate abundance based on coverage
-
-    #assign taxonomy
-
-    #generte OTU table
-
-    return 0
+    readsfp.close()
+    qualfp.close()
+    singletsfp.close()
+    qualfp.close()
 
 ###############################################################################
 ###############################################################################
@@ -156,9 +259,76 @@ if __name__ == '__main__':
     
     # parse the arguments
     args = parser.parse_args()        
+    
+    root_dir = './'
+    # generate fragment consensus sequences - pandaseq
+    #panda_out = panda(args)
 
-    # do what we came here to do
-    doWork(args)
+    # dataset partitioning based on conserved primer presence
+    partitions = partition(args.infile, root_dir)
+    
+    # dataset reduction - cd-hit - each partition - threaded
+    #map(cd_hit_reduce, partitions)
+    processes = []
+    #map(cd_hit_reduce, partitions)
+    for part in partitions:
+        p = threading.Thread(target=cd_hit_reduce,
+                args=(part,))
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join()
+    
+    del processes[:]
+    for part in partitions:
+        p = threading.Thread(target=process_cd_hit_results, args=(part,))
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join()
+
+    # generate overlaps - phrap - each partition - threaded
+    del processes[:]
+    for part in partitions:
+        p = threading.Thread(target=phrap_assemble, args=(part,))
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join()
+    
+    #combined assemblies - phrap
+    combined_dir = os.path.join(root_dir, 'combined')
+    try:
+        shutil.rmtree(combined_dir)
+    except:
+        pass
+    finally:
+        os.mkdir(combined_dir)
+    combined_out_file = os.path.join(combined_dir,'combined.fa')
+    combined_reads = open(combined_out_file, 'w')
+    combined_qual = open(os.path.join(combined_out_file+'.qual'),'w')
+    
+    for part in partitions:
+        combine_partitions(part, combined_reads, combined_qual,
+                outprefix=os.path.basename(part) )
+
+    combined_reads.close()
+    combined_qual.close()
+    
+    phrap_assemble(combined_dir, infile='combined.fa')
+    #chimera checking - uchime, decipher, chimeraslayer
+
+    #read alignment - bwa
+
+    #generate abundance based on coverage
+
+    #assign taxonomy
+
+    #generte OTU table
+
 
 ###############################################################################
 ###############################################################################

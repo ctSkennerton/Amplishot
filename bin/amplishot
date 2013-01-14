@@ -43,7 +43,7 @@ import subprocess
 from cogent.parse.fastq import MinimalFastqParser
 from cogent.parse.fasta import MinimalFastaParser, MinimalFastaQualityParser
 from cogent.app.cd_hit import CD_HIT_EST
-import cogene.app.usearch as py_usearch
+import cogent.app.usearch as py_usearch
 
 from amplishot import phrap, pandaseq, conserved_sequences
 import amplishot.search.wumanber as wumanber

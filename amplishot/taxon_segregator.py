@@ -103,11 +103,11 @@ class TaxonSegregator(object):
         start = taxonfp.tell()
         firstline = taxonfp.readline()
         taxonfp.seek(start)
-        if ggs_re.match(firstline):
+        if self.ggs_re.match(firstline):
             return 'ggs'
-        elif ggc.re.match(firstline):
+        elif self.ggc_re.match(firstline):
             return 'ggc'
-        elif sil_re.match(firstline):
+        elif self.sil_re.match(firstline):
             return 'sil'
         else:
             raise RuntimeError, "Taxon file format does not match any known"
@@ -119,8 +119,8 @@ class TaxonSegregator(object):
         """
         for line in taxonfp:
             (refid, taxon_string) = line.split('\t')
-            taxon_divisons = taxonstring.split('; ')
-             names = []
+            taxon_divisions = taxon_string.split('; ')
+            names = []
             for rank in taxon_divisions:
                 names.append(rank[3:])
 
@@ -132,7 +132,7 @@ class TaxonSegregator(object):
         """
         for line in taxonfp:
             (refid, taxon_string) = line.split('\t')
-            taxon_divisons = taxonstring.split(';')
+            taxon_divisions = taxon_string.split(';')
             names = []
             for rank in taxon_divisions:
                 names.append(rank[3:])
@@ -145,7 +145,7 @@ class TaxonSegregator(object):
         """
         for line in taxonfp:
             (refid, taxon_string) = line.split('\t')
-            taxon_divisons = taxonstring.split(';')
+            taxon_divisions = taxon_string.split(';')
             self._generate_mapping(refid, taxon_divisions)
 
     def _generate_mapping(self, refid, taxon_divisions):
@@ -230,9 +230,9 @@ class TaxonSegregator(object):
 
         if not isinstance(sam, pysam.Samfile):
             sam = self._open_sam(sam)
-        for read in samfp.fetch():
+        for read in sam.fetch():
             if not read.is_unmapped:
-                t = self.ref_taxon_mapping[samfp.getrname(read.tid)]
+                t = self.ref_taxon_mapping[sam.getrname(read.tid)]
                 self.taxon_mapping[t].append(read)
                 try:
                     self.taxon_header[t]['SQ'] = list()
@@ -243,7 +243,7 @@ class TaxonSegregator(object):
                 if read.tid not in self.taxon_references:
                     self.taxon_header[t]['SQ'].append(
                         { 'LN': sam.header['SQ'][read.tid]['LN'], 
-                        'SN': samfp.getrname(read.tid)
+                        'SN': sam.getrname(read.tid)
                         })
                     self.taxon_header[t]['HD'] = {'VN': sam.header['HD']['VN']}
                     self.taxon_references.add(read.tid)

@@ -33,95 +33,16 @@ __status__ = "Development"
 ###############################################################################
 
 import sys
-#import pysam
 import os
 import re
-import subprocess
-import tempfile
+import Bio.Seq
+
+import amplishot.parse.sam
+import amplishot.util
 ###############################################################################
 ###############################################################################
 ###############################################################################
 ###############################################################################
-DNA_COMPLEMENT_TABLE = {'A':'T',
-                        'T':'A',
-                        'C':'G',
-                        'G':'C',
-                        'a':'t',
-                        't':'a',
-                        'c':'g',
-                        'g':'c',
-                        'N':'N',
-                        'n':'n'
-                        }
-def reverse_complement(seq):
-    seq = seq[::-1]
-    ret = str()
-    for char in seq:
-        ret += DNA_COMPLEMENT_TABLE[char]
-    return ret
-
-
-def decode_quality(qual, offset=33):
-    qual = map(lambda x: ord(x) - offset, qual)
-    return qual
-
-class SamRead(object):
-    
-    def __init__(self, fields):
-        super(SamRead, self).__init__()
-        self.qname = fields[0]
-        self.flag = int(fields[1])
-        self.rname = fields[2]
-        self.pos = int(fields[3])
-        self.mapq = int(fields[4])
-        self.cigar = fields[5]
-        self.rnext = fields[6]
-        self.pnext = int(fields[7])
-        self.tlen = int(fields[8])
-        self.seq = fields[9]
-        self.qlen = len(self.seq)
-        self.qual = fields[10]
-        self.tags = {}
-        tags_split = fields[11].split('\t')
-        for tag in tags_split:
-            tag_name, value_type, value = tag.split(":")
-            if value_type == 'i':
-                value = int(value)
-            self.tags[tag_name] = value
-    
-    def has_multiple_segments(self):
-        return self.flag & 0x1
-
-    def is_properly_aligned(self):
-        return self.flag & 0x2
-
-    def is_unmapped(self):
-        return self.flag & 0x4
-
-    def is_next_segment_unmapped(self):
-        return self.flag & 0x8
-
-    def is_reversed(self):
-        return self.flag & 0x10
-
-    def is_next_segment_reversed(self):
-        return self.flag & 0x20
-
-    def is_first_segment(self):
-        return self.flag & 0x40
-
-    def is_last_segment(self):
-        return self.flag & 0x80
-
-    def is_secondary_alignment(self):
-        return self.flag & 0x100
-
-    def is_qc_fail(self):
-        return self.flag & 0x200
-
-    def is_duplicate(self):
-        return self.flag & 0x400
-
 class TaxonSegregator(object):
     """Take a taxonomy and a samfile and segregate the reads into their taxonomic
        divisions
@@ -144,15 +65,6 @@ class TaxonSegregator(object):
         self.taxon_mapping = dict()
         self.ref_taxon_mapping = dict()
         self.taxon_format = ''
-
-        # this dict will hold the samfile header information for each of the 
-        # segregated taxonomies.  The header dictionary should be constructed
-        # as the following shows:
-        #header = { 'HD': {'VN': '1.0'},
-        #    'SQ': [{'LN': 1575, 'SN': 'chr1'},
-        #           {'LN': 1584, 'SN': 'chr2'}] }
-        self.taxon_header = dict()
-        self.taxon_references = set()
 
         with open(taxonfile) as fp:
             self._parse_taxon_file(fp)
@@ -274,7 +186,7 @@ class TaxonSegregator(object):
         seq = alignedRead.seq
         quality = alignedRead.qual
         if alignedRead.is_reversed():
-            seq = reverse_complement(alignedRead.seq)
+            seq = Bio.Seq.reverse_complement(alignedRead.seq)
             quality = quality[::-1]
 
         if fasta is not None:
@@ -284,17 +196,10 @@ class TaxonSegregator(object):
             fastq.write('@%s\n%s\n+\n%s' % (name,seq,quality))
             
         if qual is not None:
-            quality = decode_quality(quality)
+            quality = amplishot.util.decode_quality(quality)
             quality = ' '.join(str(x) for x in quality)
             qual.write('>%s\n%s\n' %(name, quality))
 
-    def _open_sam(self, samfile):
-        """create an pysam 'samfile' object to parse
-
-           samfile: name of a file in either sam or bam format
-        """
-        pass
-#        return pysam.Samfile(samfile)
 
     def parse_sam(self, sam, percentId = 0.98):
         """iterate through the records in a samfile and place them into 
@@ -306,55 +211,12 @@ class TaxonSegregator(object):
         if self.done_segregation:
             raise RuntimeError, 'Segregation has already taken place.  Please\
             parse all samfiles at one and then call segregate at the end'
-        alignments = tempfile.TemporaryFile()
-        subprocess.call(['samtools','view', sam], stdout=alignments,
-                stderr=open(os.devnull, 'w'))
-        alignments.seek(1)
-
-        for line in alignments:
-            line = line.rstrip()
-            fields = line.split('\t', 11)
-            read = SamRead(fields)
-            
-            # check if the read is mapped
+        samf = amplishot.parse.sam.Sam(sam)
+        for read in samf.parse():
             if not read.is_unmapped():
                 if float(read.qlen - read.tags['NM'])/ float(read.qlen) >= percentId:
                     t = self.ref_taxon_mapping[read.rname]
                     self.taxon_mapping[t].append(read)
-        #if not isinstance(sam, pysam.Samfile):
-        #    sam = self._open_sam(sam)
-        #callback = ReadBinner(self.taxon_mapping, self.ref_taxon_mapping,
-        #        sam.references)
-        #sam.fetch(callback=callback)
-        #for read in sam.fetch():
-        #    if not count % 1000:
-        #        print count
-        #    if not read.is_unmapped:
-        #        edit_dist = 0
-        #        for tag in read.tags:
-        #            if tag[0] =='NM':
-        #                edit_dist = tag[1]
-        #                break
-        #        if float(qlen - edit_dist)/ float(qlen) >= percentId:
-        #            t = self.ref_taxon_mapping[sam.getrname(read.tid)]
-        #            self.taxon_mapping[t].append(read)
-        #    count += 1
-              #  try:
-              #      self.taxon_header[t]['SQ'] = list()
-              #  except KeyError:
-              #      self.taxon_header[t] = dict()
-              #      self.taxon_header[t]['SQ'] = list()
-
-              #  if read.tid not in self.taxon_references:
-              #      self.taxon_header[t]['SQ'].append(
-              #          { 'LN': sam.header['SQ'][read.tid]['LN'], 
-              #          'SN': sam.getrname(read.tid)
-              #          })
-              #      self.taxon_header[t]['HD'] = {'VN': sam.header['HD']['VN']}
-              #      self.taxon_references.add(read.tid)
-              #  
-        #sam.close()
-
 
     def segregate(self, root='root'):
         """Partition all reads into separate files
@@ -362,51 +224,53 @@ class TaxonSegregator(object):
            This function will make a directory structure equal to the taxonomy
            strings for each of the reference sequences.  It will overwrite any
            files already in the directory structure.
+           Returns two lists of tuples that contain taxons with suitable
+           coverage and those that do not
 
            root: The root directory name.  By default creates a directory called 
                  'root' in the current directory
         """
+        complete_taxons = []
+        incomplete_taxons = []
         sorted_taxons = self.taxon_mapping.keys()
         sorted_taxons = sorted(sorted_taxons, reverse=True, cmp=lambda x,y: cmp(len(x), len(y)))
         for taxon_ranks in sorted_taxons:
-            if not self._check_taxon_coverage(taxon_ranks) and len(taxon_ranks) > 5:
-                print "merge up", taxon_ranks
-                new_taxon = []
-                for i in range(len(taxon_ranks) - 1):
-                    new_taxon.append(taxon_ranks[i])
-                
-                t = tuple(new_taxon)
+            if not self._check_taxon_coverage(taxon_ranks):
+                if len(taxon_ranks) > 5:
+                    print "merge up", taxon_ranks
+                    new_taxon = []
+                    for i in range(len(taxon_ranks) - 1):
+                        new_taxon.append(taxon_ranks[i])
+                    
+                    t = tuple(new_taxon)
+                    try:
+                        self.taxon_mapping[t].extend(self.taxon_mapping[taxon_ranks])
+                    except KeyError:
+                        self.taxon_mapping[t] = self.taxon_mapping[taxon_ranks]
+
+                    del self.taxon_mapping[taxon_ranks]
+                else:
+                    incomplete_taxons.append(taxon_ranks)
+            else:
+                complete_taxons.append(taxon_ranks)
+                reads = self.taxon_mapping[taxon_ranks]
+
+                dir_path = os.path.join(root, *taxon_ranks)
+                if not os.path.exists(dir_path):
+                    os.makedirs(dir_path)
+
                 try:
-                    self.taxon_mapping[t].extend(self.taxon_mapping[taxon_ranks])
-                except KeyError:
-                    self.taxon_mapping[t] = self.taxon_mapping[taxon_ranks]
+                    fafp = open(os.path.join(dir_path,'reads.fa'), 'w')
+                    qualfp = open(os.path.join(dir_path,'reads.fa.qual'), 'w')
+                    for aligned_read in reads:
+                        self._sam_to_fastx(aligned_read, fasta=fafp, qual=qualfp)
 
-                del self.taxon_mapping[taxon_ranks]
-                continue
-
-            reads = self.taxon_mapping[taxon_ranks]
-
-
-            dir_path = os.path.join(root, *taxon_ranks)
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
-
-            try:
-                fafp = open(os.path.join(dir_path,'reads.fa'), 'w')
-                qualfp = open(os.path.join(dir_path,'reads.fa.qual'), 'w')
-                for aligned_read in reads:
-                    self._sam_to_fastx(aligned_read, fasta=fafp, qual=qualfp)
-                #    samfp.write(aligned_read)
-
-            finally:
-                fafp.close()
-                qualfp.close()
-                #samfp.close()
+                finally:
+                    fafp.close()
+                    qualfp.close()
 
         self.done_segregation = True
-
-
-
+        return complete_taxons, incomplete_taxons
 
 ###############################################################################
 ###############################################################################

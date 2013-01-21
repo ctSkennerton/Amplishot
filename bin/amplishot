@@ -36,18 +36,13 @@ import sys
 import tempfile
 import os
 import shutil
-#import multiprocessing
-import threading
+import multiprocessing
+#import threading
 import subprocess
 
-from cogent.parse.fastq import MinimalFastqParser
-from cogent.parse.fasta import MinimalFastaParser, MinimalFastaQualityParser
-from cogent.app.cd_hit import CD_HIT_EST
-import cogent.app.usearch as py_usearch
-
-from amplishot import phrap, pandaseq, conserved_sequences
+import amplishot.parse.fastx 
+from amplishot import phrap, pandaseq, conserved_sequences, taxon_segregator
 import amplishot.search.wumanber as wumanber
-
 
 ###############################################################################
 ###############################################################################
@@ -92,6 +87,28 @@ def make_partition_files(names, directory=None):
     ret['nomatchqual'] = open(os.path.join(directory, 'nomatch','in.fa.qual'), 'w')
         
     return ret, outdirs
+
+def map_to_reference(inreads, bowtiedb):
+    """Take overlapped reads from pandaseq and map them to reference sequences
+       returns path to output file containing sam formated alignments
+       inreads: path to file containing overlapped reads from pandaseq
+       bowtiedb: path to fileprefix of the bowtie database
+    """
+    fnull = open(sys.devnull, 'w')
+    sam = tempfile.NamedTemporaryFile(delete=False)
+    subprocess.call(['bowtie', '-U',inreads, '-x', bowtiedb], stdout = sam,
+            stderr = fnull)
+    
+    sam.close()
+    return sam.name
+
+def taxon_partition(samfile, taxonomyFile, rootdir='root'):
+    """Call the taxon segregator and return a list of tuples of taxonomies that
+       have adequate coverage for assembly
+    """
+    taxseg = amplishot.taxon_segregator.TaxonSegregator(taxonomyFile)
+    taxseg.parse_sam(samfile)
+    return taxseg.segregate(root=rootdir)
 
 def partition(infp, tempdir=None):
     """split the dataset based on the presence of conserved marker genes
@@ -141,13 +158,6 @@ def partition(infp, tempdir=None):
     return outdirs
 
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
-    #cd_hit = CD_HIT_EST(WorkingDir=workingdir, InputHandler="_input_as_path",
-    #        SuppressStdout=False, SuppressStderr=False, HALT_EXEC=False)
-    #cd_hit.Parameters['-i'].on(infile)
-    #cd_hit.Parameters['-o'].on(outfile)
-    #cd_hit.Parameters['-c'].on(0.98)
-    #cd_hit.Parameters['-M'].on(1000)
-    #results = cd_hit()
     with open(os.devnull, "w") as fnull:
         subprocess.call("cd "+workingdir+"; cd-hit-est -c 0.98 -M 1000 -o "+outfile+" -i "+infile,
             stdout=fnull, stderr=fnull, shell=True)
@@ -175,23 +185,20 @@ def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa
     clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
     clustered_reads = set()
     cd_hit_fasta = open(os.path.join(directory,cdhitout))
-    for name, seq in MinimalFastaParser(cd_hit_fasta):
+    fxparser = amplishot.parse.fastx.FastxReader(cd_hit_fasta)
+    for name, seq, qual in fxparser.parse():
         clustered_reads.add(name)
 
     cd_hit_fasta.close()
     inqual = open(os.path.join(directory,cdhitin+'.qual'))
-
-    for name, qual in MinimalFastaQualityParser(inqual):
+    qualparser = amplishot.parse.fastx.QualityParser(inqual)
+    for name, qual in qualparser.parse():
         if name in clustered_reads:
             clustered_qual.write('>%s\n%s\n' % (name, qual))
     inqual.close()
 
 
 def phrap_assemble(workingdir, infile='cdhitout.fa', suppressStdout=True, suppressStderr=True):
-    #p = phrap.Phrap(SuppressStdout=True, SuppressStderr=True,
-    #        WorkingDir=workingdir, InputFirst=True, HALT_EXEC=True)
-    #p.Parameters['-minscore'].on(300)
-    #p(infile)
     out = None
     err = None
     if suppressStdout:
@@ -251,74 +258,73 @@ def combine_partitions(workingdir, outreads, outqual,
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    #parser.add_argument('positional_arg', help="Required")
-    #parser.add_argument('positional_arg2', type=int, help="Integer argument")
-    #parser.add_argument('positional_arg3', nargs='+', help="Multiple values")
+    parser.add_argument('-T','--taxonomy', dest='taxonomy', help="File\
+            containing the taxonomy mapping of the reference sequences in the\
+                    bowtie database")
+    parser.add_argument('-d', '--bowtie-database', dest='bowtiedb', help="the\
+            path to the bowtie database, without the suffixes; just like you\
+            would write when using bowtie")
     parser.add_argument('-i', '--infile', dest='infile', 
             help="input file containing overlapped reads from pandaseq")
+    parser.add_argument('-t', '--threads', dest='threads', type=int, default=1
+            help="The number of threads to use for processing")
     
     # parse the arguments
     args = parser.parse_args()        
     
     root_dir = './'
+    taxon_root = os.path.join(root_dir, 'root')
     # generate fragment consensus sequences - pandaseq
     #panda_out = panda(args)
 
+    # map overlapped fragments with bowtie
+    samfile = map_to_reference(args.infile, args.bowtiedb)
+
+    # partition dataset based on mapped reads
+    good_taxons, bad_taxons = taxon_partition(samfile, args.taxonomy,
+            rootdir=taxon_root)
+    good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
+    print good_taxons
     # dataset partitioning based on conserved primer presence
-    partitions = partition(args.infile, root_dir)
+    #partitions = partition(args.infile, root_dir)
     
     # dataset reduction - cd-hit - each partition - threaded
-    #map(cd_hit_reduce, partitions)
-    processes = []
-    #map(cd_hit_reduce, partitions)
-    for part in partitions:
-        p = threading.Thread(target=cd_hit_reduce,
-                args=(part,))
-        processes.append(p)
-        p.start()
+    pool = multiprocessing.Pool(processes=args.threads)
+    for t in good_taxons:
+        pool.apply_async(cd_hit_reduce, t, infile='reads.fa')
+    #pool.map_async(cd_hit_reduce, good_taxons)
+    pool.close()
+    pool.join()
 
-    for p in processes:
-        p.join()
-    
-    del processes[:]
-    for part in partitions:
-        p = threading.Thread(target=process_cd_hit_results, args=(part,))
-        processes.append(p)
-        p.start()
+    for t in good_taxons:
+        apply(process_cd_hit_results, good_taxons, cdhitin='reads.fa')
 
-    for p in processes:
-        p.join()
+    ## generate overlaps - phrap - each partition - threaded
+    pool = multiprocessing.Pool(processes=args.threads)
+    pool.map_async(phrap_assemble, good_taxons)
+    pool.close()
+    pools.join()
 
-    # generate overlaps - phrap - each partition - threaded
-    del processes[:]
-    for part in partitions:
-        p = threading.Thread(target=phrap_assemble, args=(part,))
-        processes.append(p)
-        p.start()
-
-    for p in processes:
-        p.join()
-    
     #combined assemblies - phrap
-    combined_dir = os.path.join(root_dir, 'combined')
-    try:
-        shutil.rmtree(combined_dir)
-    except:
-        pass
-    finally:
-        os.mkdir(combined_dir)
-    combined_out_file = os.path.join(combined_dir,'combined.fa')
-    combined_reads = open(combined_out_file, 'w')
-    combined_qual = open(os.path.join(combined_out_file+'.qual'),'w')
-    
-    for part in partitions:
-        combine_partitions(part, combined_reads, combined_qual,
-                outprefix=os.path.basename(part) )
+   # combined_dir = os.path.join(root_dir, 'combined')
+   # try:
+   #     shutil.rmtree(combined_dir)
+   # except:
+   #     pass
+   # finally:
+   #     os.mkdir(combined_dir)
+   # combined_out_file = os.path.join(combined_dir,'combined.fa')
+   # combined_reads = open(combined_out_file, 'w')
+   # combined_qual = open(os.path.join(combined_out_file+'.qual'),'w')
+   # 
+   # for part in partitions:
+   #     combine_partitions(part, combined_reads, combined_qual,
+   #             outprefix=os.path.basename(part) )
 
-    combined_reads.close()
-    combined_qual.close()
-    
-    phrap_assemble(combined_dir, infile='combined.fa')
+   # combined_reads.close()
+   # combined_qual.close()
+   # 
+   # phrap_assemble(combined_dir, infile='combined.fa')
     #chimera checking - uchime, decipher, chimeraslayer
 
     #read alignment - bwa

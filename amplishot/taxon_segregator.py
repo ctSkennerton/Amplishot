@@ -38,7 +38,7 @@ import re
 import Bio.Seq
 
 import amplishot.parse.sam
-import amplishot.util
+import amplishot.parse.fastx
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -138,10 +138,13 @@ class TaxonSegregator(object):
         """
         format = self._check_taxonomy_file_format(taxonfp)
         if format == 'ggs':
+            print "taxonomy file is ggs"
             self._parse_greengenes_sparate(taxonfp)
         elif format == 'ggc':
+            print "taxonomy file is ggc"
             self._parse_greengenes_combined(taxonfp)
         elif format == 'sil':
+            print "taxonomy file is sil"
             self._parse_silva(taxonfp)
 
     def _check_taxon_coverage(self, taxon, minCount=1000, minCoverage=2):
@@ -196,7 +199,7 @@ class TaxonSegregator(object):
             fastq.write('@%s\n%s\n+\n%s' % (name,seq,quality))
             
         if qual is not None:
-            quality = amplishot.util.decode_quality(quality)
+            quality = amplishot.parse.fastx.decode_quality(quality)
             quality = ' '.join(str(x) for x in quality)
             qual.write('>%s\n%s\n' %(name, quality))
 
@@ -211,12 +214,15 @@ class TaxonSegregator(object):
         if self.done_segregation:
             raise RuntimeError, 'Segregation has already taken place.  Please\
             parse all samfiles at one and then call segregate at the end'
-        samf = amplishot.parse.sam.Sam(sam)
+        samf = amplishot.parse.sam.SamFile(sam)
+        good_reads = 0
         for read in samf.parse():
             if not read.is_unmapped():
                 if float(read.qlen - read.tags['NM'])/ float(read.qlen) >= percentId:
+                    good_reads += 1
                     t = self.ref_taxon_mapping[read.rname]
                     self.taxon_mapping[t].append(read)
+        print "%i reads passing quality filter" % good_reads
 
     def segregate(self, root='root'):
         """Partition all reads into separate files
@@ -237,7 +243,7 @@ class TaxonSegregator(object):
         for taxon_ranks in sorted_taxons:
             if not self._check_taxon_coverage(taxon_ranks):
                 if len(taxon_ranks) > 5:
-                    print "merge up", taxon_ranks
+                    #print "merge up", taxon_ranks
                     new_taxon = []
                     for i in range(len(taxon_ranks) - 1):
                         new_taxon.append(taxon_ranks[i])
@@ -247,11 +253,13 @@ class TaxonSegregator(object):
                         self.taxon_mapping[t].extend(self.taxon_mapping[taxon_ranks])
                     except KeyError:
                         self.taxon_mapping[t] = self.taxon_mapping[taxon_ranks]
+                        incomplete_taxons.append(t)
 
                     del self.taxon_mapping[taxon_ranks]
                 else:
                     incomplete_taxons.append(taxon_ranks)
             else:
+                #print "complete taxon:", taxon_ranks
                 complete_taxons.append(taxon_ranks)
                 reads = self.taxon_mapping[taxon_ranks]
 

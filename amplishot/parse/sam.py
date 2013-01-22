@@ -30,7 +30,7 @@ __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
-
+import os
 import subprocess
 import tempfile
 ###############################################################################
@@ -97,6 +97,66 @@ class SamRead(object):
     def is_duplicate(self):
         return self.flag & 0x400
 
+class SamFileError(Exception): pass
+
+class BamFileReader(object):
+    pass
+
+class SamFileReader(object):
+    def __init__(self, f):
+        super(SamFileReader, self).__init__()
+        try:
+            self.fp = open(f)
+            self.header = dict()
+            self._parse_header()
+        except OSError:
+            raise SamFileError, 'Cannot open Samfile'
+
+    def _parse_hader_line(self, line):
+        header_code = line[1:3]
+        if header_code != 'CO':
+            fields = line.split('\t')
+            fields_dict = dict()
+            for tag in fields[1:]:
+                code, value = tag.split(':')
+                fields_dict[code] = value
+            try:
+                self.header[header_code].append(fields_dict)
+            except KeyError:
+                self.header[header_code] = [fields_dict]
+        else:
+            try:
+                self.header[header_code].append(line[3:])
+            except KeyError:
+                self.header[header_code] = [line[3:]]
+
+    def _parse_header(self):
+        for line in self.fp:
+            line = line.rstrip()
+            if line[0] != '@':
+                break
+            else:
+                self._parse_header_line(line)
+
+
+    def _get_record(self):
+        line = self.fp.readline()
+        if not line:
+            return None
+        else:
+            fields = line.split('\t', 11)
+            return SamRead(fields)
+    
+    def __iter__(self):
+        return self
+
+    def next(self):
+        record = self._get_record()
+        if not record:
+            raise StopIteration
+        return record
+
+
 class SamFile(object):
     def __init__(self, filepath):
         super(SamFile, self).__init__()
@@ -107,11 +167,12 @@ class SamFile(object):
     def _open(self):
         self.fp = tempfile.TemporaryFile()
         if self.filepath.endswith('sam'):
-            subprocess.call(['samtools','view', '-S', self.filepath], stdout=alignments,
+            subprocess.call(['samtools','view', '-S', self.filepath],
+                    stdout=self.fp,
                     stderr=open(os.devnull, 'w'))
             self.fp.seek(1)
         else:
-            subprocess.call(['samtools','view', self.filepath], stdout=alignments,
+            subprocess.call(['samtools','view', self.filepath], stdout=self.fp,
                     stderr=open(os.devnull, 'w'))
             self.fp.seek(1)
         

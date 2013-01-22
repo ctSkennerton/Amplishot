@@ -61,42 +61,43 @@ def panda(args):
     panda.Parameters['-r'].on(args.read_2)
     return panda()
 
-def make_partition_files(names, directory=None):
-    ret = dict()
-    outdirs = list()
-    for i in names:
-        try:
-            shutil.rmtree(os.path.join(directory,i))
-        except:
-            pass
-        finally:
-            os.mkdir(os.path.join(directory,i))
-        outdirs.append(os.path.join(directory,i))
-        ret[i] = open(os.path.join(directory,i,'in.fa'), 'w')
-        ret[i+'qual'] = open(os.path.join(directory,i,'in.fa.qual'), 'w')
+#def make_partition_files(names, directory=None):
+#    ret = dict()
+#    outdirs = list()
+#    for i in names:
+#        try:
+#            shutil.rmtree(os.path.join(directory,i))
+#        except:
+#            pass
+#        finally:
+#            os.mkdir(os.path.join(directory,i))
+#        outdirs.append(os.path.join(directory,i))
+#        ret[i] = open(os.path.join(directory,i,'in.fa'), 'w')
+#        ret[i+'qual'] = open(os.path.join(directory,i,'in.fa.qual'), 'w')
+#
+#    try:
+#        shutil.rmtree(os.path.join(directory,'nomatch'))
+#    except:
+#        pass
+#    finally:
+#        os.mkdir(os.path.join(directory,'nomatch'))
+#        
+#    outdirs.append(os.path.join(directory,'nomatch'))
+#    ret['nomatch'] = open(os.path.join(directory, 'nomatch','in.fa'), 'w')
+#    ret['nomatchqual'] = open(os.path.join(directory, 'nomatch','in.fa.qual'), 'w')
+#        
+#    return ret, outdirs
 
-    try:
-        shutil.rmtree(os.path.join(directory,'nomatch'))
-    except:
-        pass
-    finally:
-        os.mkdir(os.path.join(directory,'nomatch'))
-        
-    outdirs.append(os.path.join(directory,'nomatch'))
-    ret['nomatch'] = open(os.path.join(directory, 'nomatch','in.fa'), 'w')
-    ret['nomatchqual'] = open(os.path.join(directory, 'nomatch','in.fa.qual'), 'w')
-        
-    return ret, outdirs
-
-def map_to_reference(inreads, bowtiedb):
+def map_to_reference(inreads, bowtiedb, threads):
     """Take overlapped reads from pandaseq and map them to reference sequences
        returns path to output file containing sam formated alignments
        inreads: path to file containing overlapped reads from pandaseq
        bowtiedb: path to fileprefix of the bowtie database
     """
-    fnull = open(sys.devnull, 'w')
-    sam = tempfile.NamedTemporaryFile(delete=False)
-    subprocess.call(['bowtie', '-U',inreads, '-x', bowtiedb], stdout = sam,
+    sam = tempfile.NamedTemporaryFile(suffix='.sam', delete=False)
+    with open(os.devnull, 'w') as fnull:
+        subprocess.call(['bowtie2', '-U',inreads, '-x', bowtiedb, '-p',
+            str(threads)], stdout = sam,
             stderr = fnull)
     
     sam.close()
@@ -110,77 +111,79 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     taxseg.parse_sam(samfile)
     return taxseg.segregate(root=rootdir)
 
-def partition(infp, tempdir=None):
-    """split the dataset based on the presence of conserved marker genes
-       infile - input file object
-       partitionFiles - a dictionary containing the file names for outputing
-       partitioned fasta reads
-       tempdir - output directory for partitions, if not set makes a tempdir
-    """
-    if tempdir is None:
-        tempdir = tempfile.mkdtemp()
-
-    tcs = conserved_sequences.ConservedSequences()
-    outfiles, outdirs = make_partition_files(tcs.positions, tempdir)
-
-    seqs = tcs.conserved_sequences.keys()
-    wu = wumanber.WuManber(seqs)
-    count = 0
-    total_count = 0
-    if isinstance(infp, str):
-        infp = open(infp)
-    
-    for name, seq, qual in MinimalFastqParser(infp, strict=False):
-        total_count += 1
-        qual = map(lambda x: ord(x)-33, qual)
-        qual_str = ' '.join(map(str,qual))
-        ret = wu.search_text(str(seq))
-        if ret is not None:
-            count += 1
-            # write the fasta sequence file
-            outfiles[str(tcs.conserved_sequences[ret[1]].pos)].write('>%s\n%s\n' % (name, seq))
-            # write the fasta qual file
-            outfiles[str(tcs.conserved_sequences[ret[1]].pos)+'qual'].write('>%s\n%s\n'
-                    % (name, qual_str))
-        else:
-            outfiles['nomatch'].write('>%s\n%s\n' % (name, seq))
-            outfiles['nomatchqual'].write('>%s\n%s\n' % (name, qual_str))
-
-    for f in outfiles.values():
-        f.close()
-
-    if count == total_count:
-        shutil.rmtree(os.path.join(tempdir,'nomatch'))
-        outdirs.remove(os.path.join(tempdir,'nomatch'))
-
-    print 'Able to Partition %i (%.2f %%) reads into %i bins' % (count,
-            (count / total_count)*100, len(outdirs) - 1 )
-    return outdirs
+#def partition(infp, tempdir=None):
+#    """split the dataset based on the presence of conserved marker genes
+#       infile - input file object
+#       partitionFiles - a dictionary containing the file names for outputing
+#       partitioned fasta reads
+#       tempdir - output directory for partitions, if not set makes a tempdir
+#    """
+#    if tempdir is None:
+#        tempdir = tempfile.mkdtemp()
+#
+#    tcs = conserved_sequences.ConservedSequences()
+#    outfiles, outdirs = make_partition_files(tcs.positions, tempdir)
+#
+#    seqs = tcs.conserved_sequences.keys()
+#    wu = wumanber.WuManber(seqs)
+#    count = 0
+#    total_count = 0
+#    if isinstance(infp, str):
+#        infp = open(infp)
+#    
+#    for name, seq, qual in MinimalFastqParser(infp, strict=False):
+#        total_count += 1
+#        qual = map(lambda x: ord(x)-33, qual)
+#        qual_str = ' '.join(map(str,qual))
+#        ret = wu.search_text(str(seq))
+#        if ret is not None:
+#            count += 1
+#            # write the fasta sequence file
+#            outfiles[str(tcs.conserved_sequences[ret[1]].pos)].write('>%s\n%s\n' % (name, seq))
+#            # write the fasta qual file
+#            outfiles[str(tcs.conserved_sequences[ret[1]].pos)+'qual'].write('>%s\n%s\n'
+#                    % (name, qual_str))
+#        else:
+#            outfiles['nomatch'].write('>%s\n%s\n' % (name, seq))
+#            outfiles['nomatchqual'].write('>%s\n%s\n' % (name, qual_str))
+#
+#    for f in outfiles.values():
+#        f.close()
+#
+#    if count == total_count:
+#        shutil.rmtree(os.path.join(tempdir,'nomatch'))
+#        outdirs.remove(os.path.join(tempdir,'nomatch'))
+#
+#    print 'Able to Partition %i (%.2f %%) reads into %i bins' % (count,
+#            (count / total_count)*100, len(outdirs) - 1 )
+#    return outdirs
 
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
+    #print ' '.join(["cd-hit-est","-c","0.98", "-M", "1000","-o", os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)])
     with open(os.devnull, "w") as fnull:
-        subprocess.call("cd "+workingdir+"; cd-hit-est -c 0.98 -M 1000 -o "+outfile+" -i "+infile,
-            stdout=fnull, stderr=fnull, shell=True)
+        return subprocess.call(["cd-hit-est","-c","0.98", "-M", "1000","-o",
+                os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)],
+            stdout=fnull, stderr=fnull)
 
-def extract_subset(headers, dbfp, parser=MinimalFastaParser, outfp=None, nameTransform=None):
-    """nameTransform is a function to modify the names of the output
-    """
-    return_dict = dict()
-    for name, seq in parser(dbfp):
-        if name in headers:
-            if nameTransform is None:
-                if outfp is None:
-                    return_dict[name] = seq
-                else:
-                    outfp.write('>%s\n%s\n' % (name, seq))
-            else:
-                if outfp is None:
-                    return_dict[nameTransform(name)] = seq
-                else:
-                    outfp.write('>%s\n%s\n' % (nameTransform(name), seq))
-    return return_dict
-
-
+#def extract_subset(headers, dbfp, parser=MinimalFastaParser, outfp=None, nameTransform=None):
+#    """nameTransform is a function to modify the names of the output
+#    """
+#    return_dict = dict()
+#    for name, seq in parser(dbfp):
+#        if name in headers:
+#            if nameTransform is None:
+#                if outfp is None:
+#                    return_dict[name] = seq
+#                else:
+#                    outfp.write('>%s\n%s\n' % (name, seq))
+#            else:
+#                if outfp is None:
+#                    return_dict[nameTransform(name)] = seq
+#                else:
+#                    outfp.write('>%s\n%s\n' % (nameTransform(name), seq))
+#    return return_dict
+#
+#
 def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa'):
     clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
     clustered_reads = set()
@@ -191,7 +194,7 @@ def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa
 
     cd_hit_fasta.close()
     inqual = open(os.path.join(directory,cdhitin+'.qual'))
-    qualparser = amplishot.parse.fastx.QualityParser(inqual)
+    qualparser = amplishot.parse.fastx.QualityReader(inqual)
     for name, qual in qualparser.parse():
         if name in clustered_reads:
             clustered_qual.write('>%s\n%s\n' % (name, qual))
@@ -205,50 +208,50 @@ def phrap_assemble(workingdir, infile='cdhitout.fa', suppressStdout=True, suppre
         out = open(os.devnull, "w")
     if suppressStderr:
         err = open(os.devnull, "w")
-    
-    subprocess.call("cd "+workingdir+"; phrap "+infile+" -minscore 300",
-            stderr=err, stdout=out, shell=True)
+    print ' '.join(['phrap',infile,'-minscore','300'])
+    return subprocess.call(['phrap',infile,'-minscore','300'],
+            stderr=err, stdout=out, cwd=workingdir)
 
-def combine_partitions(workingdir, outreads, outqual,
-        prefix='cdhitout.fa', outprefix='read'):
-    counter = 0
-    qualcounter = 0
-    # read in the contigs and rename them as we go
-    readsfp = open(os.path.join(workingdir,prefix+'.contigs'))
-    qualfp = open(os.path.join(workingdir,prefix+'.contigs.qual'))
-    singletsfp = open(os.path.join(workingdir, prefix+'.singlets'))
-    qualdbfp = open(os.path.join(workingdir, prefix+'.qual'))
-    
-    for name, seq in MinimalFastaParser(readsfp):
-        counter += 1
-        outreads.write('>%s\n%s\n' % (outprefix+str(counter), seq))
-    
-    for name, qual in MinimalFastaQualityParser(qualfp):
-        qualcounter+=1
-        outqual.write('>%s\n%s\n' % (outprefix+str(qualcounter), qual))
-    
-    if counter != qualcounter:
-        raise RuntimeError, "counter mismatch"
-        
-    singlets = dict()
-    for name, seq in MinimalFastaParser(singletsfp):
-        singlets[name] = [seq,'']
-    
-    for name, qual in MinimalFastaQualityParser(qualdbfp):
-        try:
-            singlets[name][1] = qual
-        except:
-            pass
-            
-    for name, data in singlets.items():
-        counter+=1
-        outqual.write('>%s\n%s\n' % (outprefix+str(counter), data[1]))
-        outreads.write('>%s\n%s\n' % (outprefix+str(counter), data[0]))
-
-    readsfp.close()
-    qualfp.close()
-    singletsfp.close()
-    qualfp.close()
+#def combine_partitions(workingdir, outreads, outqual,
+#        prefix='cdhitout.fa', outprefix='read'):
+#    counter = 0
+#    qualcounter = 0
+#    # read in the contigs and rename them as we go
+#    readsfp = open(os.path.join(workingdir,prefix+'.contigs'))
+#    qualfp = open(os.path.join(workingdir,prefix+'.contigs.qual'))
+#    singletsfp = open(os.path.join(workingdir, prefix+'.singlets'))
+#    qualdbfp = open(os.path.join(workingdir, prefix+'.qual'))
+#    
+#    for name, seq in MinimalFastaParser(readsfp):
+#        counter += 1
+#        outreads.write('>%s\n%s\n' % (outprefix+str(counter), seq))
+#    
+#    for name, qual in MinimalFastaQualityParser(qualfp):
+#        qualcounter+=1
+#        outqual.write('>%s\n%s\n' % (outprefix+str(qualcounter), qual))
+#    
+#    if counter != qualcounter:
+#        raise RuntimeError, "counter mismatch"
+#        
+#    singlets = dict()
+#    for name, seq in MinimalFastaParser(singletsfp):
+#        singlets[name] = [seq,'']
+#    
+#    for name, qual in MinimalFastaQualityParser(qualdbfp):
+#        try:
+#            singlets[name][1] = qual
+#        except:
+#            pass
+#            
+#    for name, data in singlets.items():
+#        counter+=1
+#        outqual.write('>%s\n%s\n' % (outprefix+str(counter), data[1]))
+#        outreads.write('>%s\n%s\n' % (outprefix+str(counter), data[0]))
+#
+#    readsfp.close()
+#    qualfp.close()
+#    singletsfp.close()
+#    qualfp.close()
 
 ###############################################################################
 ###############################################################################
@@ -266,7 +269,7 @@ if __name__ == '__main__':
             would write when using bowtie")
     parser.add_argument('-i', '--infile', dest='infile', 
             help="input file containing overlapped reads from pandaseq")
-    parser.add_argument('-t', '--threads', dest='threads', type=int, default=1
+    parser.add_argument('-t', '--threads', dest='threads', type=int, default=1,
             help="The number of threads to use for processing")
     
     # parse the arguments
@@ -278,32 +281,40 @@ if __name__ == '__main__':
     #panda_out = panda(args)
 
     # map overlapped fragments with bowtie
-    samfile = map_to_reference(args.infile, args.bowtiedb)
+    samfile = map_to_reference(args.infile, args.bowtiedb, args.threads)
 
     # partition dataset based on mapped reads
     good_taxons, bad_taxons = taxon_partition(samfile, args.taxonomy,
             rootdir=taxon_root)
+    print 'There are %i taxons suitable for assembly and %i taxons with\
+            incomplete coverage' % (len(good_taxons), len(bad_taxons))
+    if len(good_taxons) < 1:
+        print "No taxons for assembly"
+        sys.exit(1)
+
     good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
-    print good_taxons
     # dataset partitioning based on conserved primer presence
     #partitions = partition(args.infile, root_dir)
     
     # dataset reduction - cd-hit - each partition - threaded
-    pool = multiprocessing.Pool(processes=args.threads)
+    #pool = multiprocessing.Pool(processes=args.threads)
     for t in good_taxons:
-        pool.apply_async(cd_hit_reduce, t, infile='reads.fa')
-    #pool.map_async(cd_hit_reduce, good_taxons)
-    pool.close()
-    pool.join()
+     #   print "parallel cd-hit clustering..."
+      #  pool.apply_async(cd_hit_reduce, t, {'infile':'reads.fa'})
+      cd_hit_reduce(t, infile='reads.fa')
+    #pool.close()
+    #pool.join()
 
     for t in good_taxons:
-        apply(process_cd_hit_results, good_taxons, cdhitin='reads.fa')
+        process_cd_hit_results(t, cdhitin='reads.fa')
 
     ## generate overlaps - phrap - each partition - threaded
-    pool = multiprocessing.Pool(processes=args.threads)
-    pool.map_async(phrap_assemble, good_taxons)
-    pool.close()
-    pools.join()
+    for t in good_taxons:
+        phrap_assemble(t)
+    #pool = multiprocessing.Pool(processes=args.threads)
+    #pool.map_async(phrap_assemble, good_taxons)
+    #pool.close()
+    #pool.join()
 
     #combined assemblies - phrap
    # combined_dir = os.path.join(root_dir, 'combined')

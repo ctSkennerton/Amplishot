@@ -109,53 +109,6 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     taxseg.parse_sam(samfile)
     return taxseg.segregate(root=rootdir)
 
-#def partition(infp, tempdir=None):
-#    """split the dataset based on the presence of conserved marker genes
-#       infile - input file object
-#       partitionFiles - a dictionary containing the file names for outputing
-#       partitioned fasta reads
-#       tempdir - output directory for partitions, if not set makes a tempdir
-#    """
-#    if tempdir is None:
-#        tempdir = tempfile.mkdtemp()
-#
-#    tcs = conserved_sequences.ConservedSequences()
-#    outfiles, outdirs = make_partition_files(tcs.positions, tempdir)
-#
-#    seqs = tcs.conserved_sequences.keys()
-#    wu = wumanber.WuManber(seqs)
-#    count = 0
-#    total_count = 0
-#    if isinstance(infp, str):
-#        infp = open(infp)
-#    
-#    for name, seq, qual in MinimalFastqParser(infp, strict=False):
-#        total_count += 1
-#        qual = map(lambda x: ord(x)-33, qual)
-#        qual_str = ' '.join(map(str,qual))
-#        ret = wu.search_text(str(seq))
-#        if ret is not None:
-#            count += 1
-#            # write the fasta sequence file
-#            outfiles[str(tcs.conserved_sequences[ret[1]].pos)].write('>%s\n%s\n' % (name, seq))
-#            # write the fasta qual file
-#            outfiles[str(tcs.conserved_sequences[ret[1]].pos)+'qual'].write('>%s\n%s\n'
-#                    % (name, qual_str))
-#        else:
-#            outfiles['nomatch'].write('>%s\n%s\n' % (name, seq))
-#            outfiles['nomatchqual'].write('>%s\n%s\n' % (name, qual_str))
-#
-#    for f in outfiles.values():
-#        f.close()
-#
-#    if count == total_count:
-#        shutil.rmtree(os.path.join(tempdir,'nomatch'))
-#        outdirs.remove(os.path.join(tempdir,'nomatch'))
-#
-#    print 'Able to Partition %i (%.2f %%) reads into %i bins' % (count,
-#            (count / total_count)*100, len(outdirs) - 1 )
-#    return outdirs
-
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
     #print ' '.join(["cd-hit-est","-c","0.98", "-M", "1000","-o", os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)])
     proc = subprocess.Popen(["cd-hit-est","-c","0.98", "-M", "1000","-o",
@@ -166,25 +119,6 @@ def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
     return_value = proc.returncode
     return stdout, stderr, return_value
 
-#def extract_subset(headers, dbfp, parser=MinimalFastaParser, outfp=None, nameTransform=None):
-#    """nameTransform is a function to modify the names of the output
-#    """
-#    return_dict = dict()
-#    for name, seq in parser(dbfp):
-#        if name in headers:
-#            if nameTransform is None:
-#                if outfp is None:
-#                    return_dict[name] = seq
-#                else:
-#                    outfp.write('>%s\n%s\n' % (name, seq))
-#            else:
-#                if outfp is None:
-#                    return_dict[nameTransform(name)] = seq
-#                else:
-#                    outfp.write('>%s\n%s\n' % (nameTransform(name), seq))
-#    return return_dict
-#
-#
 def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa'):
     clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
     clustered_reads = set()
@@ -209,56 +143,80 @@ def phrap_assemble(workingdir, infile='cdhitout.fa', suppressStdout=True, suppre
         out = open(os.devnull, "w")
     if suppressStderr:
         err = open(os.devnull, "w")
-    print ' '.join(['phrap',infile,'-minscore','300'])
     return subprocess.call(['phrap',infile,'-minscore','300'],
             stderr=err, stdout=out, cwd=workingdir)
+
 def demultiplex(args): pass
 def assemble(args): pass
 def overlap(args): pass
 def map_reads(args): pass
-def filter_sam(args): pass
+
+def filter_sam(args): 
+    taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
+    for samfile in args.sam:
+        taxseg.parse_sam(samfile, args.percentid)
+    good_taxons, bad_taxons = taxseg.segregate(root=args.outdir, minCount=args.taxon_width,
+            minCoverage=args.taxon_depth)
+    
+
 def cluster(args): pass
 def pipeline(args):
     """Run all the steps of amplishot
     """
     root_dir = args.outdir
-    taxon_root = os.path.join(root_dir, 'root')
     # generate fragment consensus sequences - pandaseq
     #panda_out = panda(args)
 
     # map overlapped fragments with bowtie
-    samfile = map_to_reference(args.infile, args.bowtiedb, args.threads)
+    print 'mapping with bowtie...'
+    sams= []
+    for samfile in args.file:
+        sams.append( map_to_reference(samfile, args.bowtiedb, args.threads))
 
-    # partition dataset based on mapped reads
-    good_taxons, bad_taxons = taxon_partition(samfile, args.taxonomy,
-            rootdir=taxon_root)
-    print 'There are %i taxons suitable for assembly and %i taxons with\
-            incomplete coverage' % (len(good_taxons), len(bad_taxons))
-    if len(good_taxons) < 1:
-        print "No taxons for assembly"
-        sys.exit(1)
+    try:
+        index = 0
+        for samfile in sams:
+            print 'processing %s...' % args.file[index] 
+            taxon_root = os.path.join(args.outdir,
+                os.path.basename(args.file[index]),'root')
 
-    good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
-    
-    # dataset reduction - cd-hit - each partition - threaded
-    for t in good_taxons:
-        cd_hit_reduce(t, infile='reads.fa')
+            # partition dataset based on mapped reads
+            print '\tpartitioning...'
+            good_taxons, bad_taxons = taxon_partition(samfile, args.taxonomy,
+                    rootdir=taxon_root)
+            print '\tThere are %i taxons suitable for assembly and %i taxons with incomplete coverage' % (len(good_taxons), len(bad_taxons))
+            if len(good_taxons) < 1:
+                print "\tNo taxons for assembly"
+            else:
+                good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
+                
+                # dataset reduction - cd-hit - each partition - threaded
+                print '\tclustering...'
+                for t in good_taxons:
+                    cd_hit_reduce(t, infile='reads.fa')
+                
+                print '\tassembling...'
+                for t in good_taxons:
+                    process_cd_hit_results(t, cdhitin='reads.fa')
 
-    for t in good_taxons:
-        process_cd_hit_results(t, cdhitin='reads.fa')
+                ## generate overlaps - phrap - each partition - threaded
+                for t in good_taxons:
+                    phrap_assemble(t)
+                #chimera checking - uchime, decipher, chimeraslayer
 
-    ## generate overlaps - phrap - each partition - threaded
-    for t in good_taxons:
-        phrap_assemble(t)
-    #chimera checking - uchime, decipher, chimeraslayer
+                #read alignment - bwa
 
-    #read alignment - bwa
+                #generate abundance based on coverage
 
-    #generate abundance based on coverage
+                #assign taxonomy
 
-    #assign taxonomy
-
-    #generte OTU table
+                #generte OTU table
+            
+            index += 1
+    finally:
+        for sam in sams:
+            if os.path.exists(sam):
+                os.remove(sam)
 
 ###############################################################################
 ###############################################################################
@@ -319,7 +277,7 @@ if __name__ == '__main__':
     pipeline_parser = subparser.add_parser('pipeline',
             help='Run %(prog)s from start to finish',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser]
+            parents=[common_options_parser, threads_parser]
             )
     pipeline_parser.add_argument('-T','--taxonomy', required=True, dest='taxonomy', help="File\
             containing the taxonomy mapping of the reference sequences in the\
@@ -409,6 +367,8 @@ if __name__ == '__main__':
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser]
             )
+    filter_parser.add_argument('-o', '--output-directory', dest='outdir',
+            default='.', help='output directory prefix')
     filter_parser.add_argument('-T', '--taxonomy-file', required=True,
             dest='taxonomy', help='A mapping file in either Greengenes or\
             SILVA format that maps the reference IDs to their taxonomies')

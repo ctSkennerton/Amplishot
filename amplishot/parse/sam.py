@@ -30,20 +30,18 @@ __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
-import os
-import subprocess
-import tempfile
-###############################################################################
 ###############################################################################
 ###############################################################################
 ###############################################################################
 
 class SamRead(object):
     
-    def __init__(self, fields):
+    def __init__(self, fields, parseTags=True):
         super(SamRead, self).__init__()
         if isinstance(fields, str):
             fields = fields.split('\t', 11)
+            if len(fields) != 12:
+                raise SamFileError
         self.qname = fields[0]
         self.flag = int(fields[1])
         self.rname = fields[2]
@@ -56,13 +54,61 @@ class SamRead(object):
         self.seq = fields[9]
         self.qlen = len(self.seq)
         self.qual = fields[10]
-        self.tags = {}
-        tags_split = fields[11].split('\t')
+        self.tags = None
+        if parseTags:
+            self.parse_tags(fields[11])
+        else:
+            self.tags = fields[11]
+
+    def parse_tags(self):
+        self.tags = dict()
+        tags_split = tagString.split('\t')
         for tag in tags_split:
             tag_name, value_type, value = tag.split(":")
             if value_type == 'i':
                 value = int(value)
+            elif value_type == 'f':
+                value = float(value)
+            elif value_type == 'B':
+                value = value.split(',')
+                if value[0] == 'f':
+                    value = [float(x) for x in value[1:]]
+                else:
+                    value = [int(x) for x in value[1:]]
             self.tags[tag_name] = value
+
+    def _generate_tag_string(self):
+        string = ''
+        for name, value in self.tags.items():
+            string += '%s:' % name
+            if isinstance(value, int):
+                string += 'i:%i' % value
+            elif isinstance(value, float):
+                string += 'f:%f' % value
+            elif isinstance(value, list):
+                string+= 'B:'
+                if isinstance(value[0], float):
+                    string += 'f'
+                    string += ','.join(value)
+                else:
+                    string += 'i' + ','.join(value)
+            else:
+                string += 'Z:%s' % value
+            string += '\t'
+
+        return string.rstrip('\t')
+
+
+
+    def __str__(self):
+        string = '%s\t%i\t%s\t%i\t%i\t%s\t%s\t%i\t%i\t%s\t%s\t' % (self.qname,
+                self.flag, self.rname, self.pos, self.mapq, self.cigar,
+                self.rnext, self.pnext, self.tlen, self.seq, self.qual)
+        if isinstance(self.tags, dict):
+            string += self._generate_tag_string()
+        else:
+            string += self.tags
+        return string
     
     def has_multiple_segments(self):
         return self.flag & 0x1
@@ -102,19 +148,29 @@ class SamFileError(Exception): pass
 class BamFileReader(object):
     pass
 
+
+
 class SamFileReader(object):
-    def __init__(self, f):
+    def __init__(self, f, parseHeader=True, parseTags=True):
         super(SamFileReader, self).__init__()
         try:
             self.fp = open(f)
             self.header = dict()
-            self._parse_header()
+            if parseHeader:
+                self._parse_header(parseHeader)
         except OSError:
             raise SamFileError, 'Cannot open Samfile'
 
-    def _parse_hader_line(self, line):
+    def _parse_header_line(self, line):
         header_code = line[1:3]
-        if header_code != 'CO':
+        if header_code == 'HD':
+            fields = line.split('\t')
+            fields_dict = dict()
+            for tag in fields[1:]:
+                code, value = tag.split(':')
+                fields_dict[code] = value
+            self.header[header_code] = fields_dict
+        elif header_code != 'CO':
             fields = line.split('\t')
             fields_dict = dict()
             for tag in fields[1:]:
@@ -130,54 +186,19 @@ class SamFileReader(object):
             except KeyError:
                 self.header[header_code] = [line[3:]]
 
-    def _parse_header(self):
+    def _parse_header(self, saveInfo):
         for line in self.fp:
             line = line.rstrip()
             if line[0] != '@':
                 break
-            else:
+            elif saveInfo:
                 self._parse_header_line(line)
 
 
-    def _get_record(self):
-        line = self.fp.readline()
-        if not line:
-            return None
-        else:
-            fields = line.split('\t', 11)
-            return SamRead(fields)
-    
-    def __iter__(self):
-        return self
-
-    def next(self):
-        record = self._get_record()
-        if not record:
-            raise StopIteration
-        return record
-
-
-class SamFile(object):
-    def __init__(self, filepath):
-        super(SamFile, self).__init__()
-        self.filepath = filepath
-        self.fp = None
-        self._open()
-
-    def _open(self):
-        self.fp = tempfile.TemporaryFile()
-        if self.filepath.endswith('sam'):
-            subprocess.call(['samtools','view', '-S', self.filepath],
-                    stdout=self.fp,
-                    stderr=open(os.devnull, 'w'))
-            self.fp.seek(1)
-        else:
-            subprocess.call(['samtools','view', self.filepath], stdout=self.fp,
-                    stderr=open(os.devnull, 'w'))
-            self.fp.seek(1)
-        
     def parse(self):
         for line in self.fp:
-            line = line.rstrip()
             fields = line.split('\t', 11)
+            if len(fields) != 12:
+                print 'malformed alignment.\nnumber of fields: %i\nline is: %s' % (len(fields), line)
+                raise SamFileError
             yield SamRead(fields)

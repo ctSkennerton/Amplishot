@@ -147,7 +147,7 @@ class TaxonSegregator(object):
             print "taxonomy file is sil"
             self._parse_silva(taxonfp)
 
-    def _check_taxon_coverage(self, taxon, minCount=1000, minCoverage=2):
+    def _check_taxon_coverage(self, taxon, minCount, minCoverage):
         """calculate the per base coverage for this taxon
            If a taxon does not contain sufficient coverage across the length of
            the reference sequences then it should be merged into a higher taxonomy
@@ -214,17 +214,16 @@ class TaxonSegregator(object):
         if self.done_segregation:
             raise RuntimeError, 'Segregation has already taken place.  Please\
             parse all samfiles at one and then call segregate at the end'
-        samf = amplishot.parse.sam.SamFile(sam)
-        good_reads = 0
-        for read in samf.parse():
+        samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
+        for read in samf():
             if not read.is_unmapped():
                 if float(read.qlen - read.tags['NM'])/ float(read.qlen) >= percentId:
-                    good_reads += 1
                     t = self.ref_taxon_mapping[read.rname]
                     self.taxon_mapping[t].append(read)
-        print "%i reads passing quality filter" % good_reads
 
-    def segregate(self, root='root'):
+    def segregate(self, root='root', mergeUpLevel=5, minCount=1000,
+            minCoverage=2, fasta=True, qual=True,
+            fastq=False, sam=False, prefix='reads'):
         """Partition all reads into separate files
            Ideally this should be called after all sam files have been parsed
            This function will make a directory structure equal to the taxonomy
@@ -235,15 +234,27 @@ class TaxonSegregator(object):
 
            root: The root directory name.  By default creates a directory called 
                  'root' in the current directory
+           mergeUpLevel: The taxonomic level at which to stop merging up if
+                there is not enough coverage.  By default this is level 5, which in
+                greengenes is the family level
+           minCount: the minimum number of positions that must have coverage
+           minCoverage: the minimum coverage allowed for the covered positions
+           fasta: output a fasta file containing segregated reads
+           qual: output a fasta.qual file containing integer quality values for
+                segregated reads
+           fastq: output a fastq file containing seqregated reads
+           sam: output segregated reads in sam format
+           prefix: the name for the output files without extension (don't put
+                directories here, they are created automatically)
         """
         complete_taxons = []
         incomplete_taxons = []
         sorted_taxons = self.taxon_mapping.keys()
         sorted_taxons = sorted(sorted_taxons, reverse=True, cmp=lambda x,y: cmp(len(x), len(y)))
         for taxon_ranks in sorted_taxons:
-            if not self._check_taxon_coverage(taxon_ranks):
-                if len(taxon_ranks) > 5:
-                    #print "merge up", taxon_ranks
+            if not self._check_taxon_coverage(taxon_ranks, monCount,
+                    minCoverage):
+                if len(taxon_ranks) > mergeUpLevel:
                     new_taxon = []
                     for i in range(len(taxon_ranks) - 1):
                         new_taxon.append(taxon_ranks[i])
@@ -252,14 +263,14 @@ class TaxonSegregator(object):
                     try:
                         self.taxon_mapping[t].extend(self.taxon_mapping[taxon_ranks])
                     except KeyError:
-                        self.taxon_mapping[t] = self.taxon_mapping[taxon_ranks]
-                        incomplete_taxons.append(t)
-
-                    del self.taxon_mapping[taxon_ranks]
+                        # no taxon above this level therefore no point in
+                        # deleting this taxon
+                        pass
+                    else:
+                        del self.taxon_mapping[taxon_ranks]
                 else:
                     incomplete_taxons.append(taxon_ranks)
             else:
-                #print "complete taxon:", taxon_ranks
                 complete_taxons.append(taxon_ranks)
                 reads = self.taxon_mapping[taxon_ranks]
 
@@ -267,15 +278,36 @@ class TaxonSegregator(object):
                 if not os.path.exists(dir_path):
                     os.makedirs(dir_path)
 
+                fafp = None
+                qualfp = None
+                fqfp = None
+                samfp = None
                 try:
-                    fafp = open(os.path.join(dir_path,'reads.fa'), 'w')
-                    qualfp = open(os.path.join(dir_path,'reads.fa.qual'), 'w')
+                    if fasta:
+                        fafp = open(os.path.join(dir_path,'%s.fa' % prefix), 'w')
+                    if qual:
+                        qualfp = open(os.path.join(dir_path,'%s.fa.qual' % prefix), 'w')
+                    if fastq:
+                        fqfp = open(os.path.join(dir_path,'%s.fq' % prefix), 'w')
+                    if sam:
+                        samfp = open(os.path.join(dir_path, '%s.sam' % prefix),
+                                'w')
+
                     for aligned_read in reads:
-                        self._sam_to_fastx(aligned_read, fasta=fafp, qual=qualfp)
+                        self._sam_to_fastx(aligned_read, fasta=fafp,
+                                qual=qualfp, fastq=fqfp)
+                        if sam:
+                            samfp.write('%s\n' % str(aligned_read))
 
                 finally:
-                    fafp.close()
-                    qualfp.close()
+                    if fafp is not None: 
+                        fafp.close()
+                    if qualfp is not None:
+                        qualfp.close()
+                    if fqfp is not None:
+                        fqfp.close()
+                    if samfp is not None:
+                        samfp.close()
 
         self.done_segregation = True
         return complete_taxons, incomplete_taxons

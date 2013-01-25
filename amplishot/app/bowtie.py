@@ -86,20 +86,20 @@ class Bowtie(AbstractCommandline):
                 '''qualities encoded as space-delimited integers''')
 
             _Switch(['--very-fast', 'very-fast'],
-                '''-D 5 -R 1 -N 0 -L 22 -i S,0,2.50''') 
+                '''-D 5 -R 1 -N 0 -L 22 -i S,0,2.50''')
             _Switch(['--fast', 'fast'],
                 '''-D 10 -R 2 -N 0 -L 22 -i S,0,2.50''')
             _Switch(['--sensitive', 'sensitive'],
                 '''-D 15 -R 2 -N 0 -L 22 -i S,1,1.15 (default)''')
             _Switch(['--very-sensitive', 'very-sensitive'],
-                '''-D 20 -R 3 -N 0 -L 20 -i S,1,0.50''') 
+                '''-D 20 -R 3 -N 0 -L 20 -i S,1,0.50''')
 
             _Switch(['--very-fast-local', 'very-fast-local',
                 '''-D 5 -R 1 -N 0 -L 25 -i S,1,2.00''')
             _Switch(['--fast-local', 'fast-local'],
-                '''-D 10 -R 2 -N 0 -L 22 -i S,1,1.75''') 
+                '''-D 10 -R 2 -N 0 -L 22 -i S,1,1.75''')
             _Switch(['--sensitive-local', 'sensitive-local'],
-                '''-D 15 -R 2 -N 0 -L 20 -i S,1,0.75 (default)''') 
+                '''-D 15 -R 2 -N 0 -L 20 -i S,1,0.75 (default)''')
             _switch(['--very-sensitive-local', 'very-sensitive-local' ],
                 '''-D 20 -R 3 -N 0 -L 20 -i S,1,0.50''')
 
@@ -110,13 +110,13 @@ class Bowtie(AbstractCommandline):
             _Option(['-i', 'i'],
                 '''interval between seed substrings w/r/t read len (S,1,1.15)''')
             _Option(['--n-ceil', 'n-ceil'],
-                '''func for max # non-A/C/G/Ts permitted in aln (L,0,0.15)''') 
+                '''func for max # non-A/C/G/Ts permitted in aln (L,0,0.15)''')
             _Option(['--dpad', 'dpad'],
                 '''extra ref chars on sides of DP table (15)''')
             _Option(['--gbar', 'gbar'],
                 '''nucs of read extremes (4)''')
             _Switch(['--ignore-quals', 'ignore-quals'],
-                '''treat all quality values as 30 on Phred scale (off)''') 
+                '''treat all quality values as 30 on Phred scale (off)''')
             _Switch(['--nofw', 'nofw'],
                 '''do not align forward (original) version of read (off)''')
             _Switch(['--norc', 'norc'],
@@ -138,7 +138,8 @@ class Bowtie(AbstractCommandline):
             _Option(['--rfg', 'rfg'],
                 '''reference gap open, extend penalties (5,3)''')
             _Option(['--score-min', 'score-min'],
-                '''<func> min acceptable alignment score w/r/t read length (G,20,8 for local, L,-0.6,-0.6 for end-to-end)''') 
+                '''min acceptable alignment score w/r/t
+                read length (G,20,8 for local, L,-0.6,-0.6 for end-to-end)''')
 
             _Option(['-k', 'k'],
                 '''report up to <int> alns per read; MAPQ not meaningful''')
@@ -160,15 +161,15 @@ class Bowtie(AbstractCommandline):
             _Switch(['--ff', 'ff', 'forward-forward'],
                     '''mates are in forward/forward orientation'''
             _Switch(['--no-mixed', 'no-mixed'],
-                '''suppress unpaired alignments for paired reads''') 
+                '''suppress unpaired alignments for paired reads''')
             _Switch(['--no-discordant', 'no-discordant'],
-                '''suppress discordant alignments for paired reads''') 
+                '''suppress discordant alignments for paired reads''')
             _Switch(['--no-dovetail', 'no-dovetail'],
-                '''not concordant when mates extend past each other''') 
+                '''not concordant when mates extend past each other''')
             _Switch(['--no-contain', 'no-contain'],
-                '''not concordant when one mate alignment contains other''') 
+                '''not concordant when one mate alignment contains other''')
             _Switch(['--no-overlap', 'no-overlap'],
-                '''not concordant when mates overlap at all''') 
+                '''not concordant when mates overlap at all''')
 
             _Switch(['-t', 't', 'time'],
                 '''print wall-clock time taken by search phases''')
@@ -185,16 +186,16 @@ class Bowtie(AbstractCommandline):
             _Switch(['--quiet', 'quiet'],
                 '''print nothing to stderr except serious errors''')
             _Option(['--met-file', 'met-file'],
-                '''send metrics to file at <path> (off)''') 
+                '''send metrics to file at <path> (off)''')
             _Switch(['--met-stderr', 'met-stderr'],
                 '''send metrics to stderr (off)''') 
             _Option(['--met', 'met'], '''secs (1)''')
             _Switch(['--no-head', 'no-head'],
-                '''supppress header lines, i.e. lines starting with @''') 
+                '''supppress header lines, i.e. lines starting with @''')
             _Switch(['--no-sq', 'no-sq'],
-                '''supppress @SQ header lines''') 
+                '''supppress @SQ header lines''')
             _Option(['--rg-id', 'rg-id'],
-                '''set read group id, reflected in @RG line and RG:Z: opt field''') 
+                '''set read group id, reflected in @RG line and RG:Z: opt field''')
             _Option(['--rg', 'rg'],
                 '''("lab:value") to @RG line of SAM header.''')
             _Switch(['--omit-sec-seq','omit-sec-seq'],
@@ -209,12 +210,12 @@ class Bowtie(AbstractCommandline):
                 '''use memory-mapped I/O for index; many 'bowtie's can share''')
 
             _Switch(['--qc-filter', 'qc-filter'],
-                '''filter out reads that are bad according to QSEQ filter''') 
+                '''filter out reads that are bad according to QSEQ filter''')
             _Option(['--seed', 'seed'],
                 '''seed for random number generator (0)''')
             _Switch(['--non-deterministic', 'non-deterministic'], 
-                '''seed rand. gen. arbitrarily instead of using read attributes''') 
+                '''seed rand. gen. arbitrarily instead of using read attributes''')
             _Switch(['--version', 'version'], 
                 '''print version information and quit''')
             _Switch(['-h', 'h','help'], '''print this usage message''')
-        ] 
+        ]

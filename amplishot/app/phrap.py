@@ -22,7 +22,7 @@
 
 
 from Bio.Application import _Argument, _Switch, _Option, AbstractCommandline
-
+import os
 
 """Application controller for phrap"""
 
@@ -142,3 +142,18 @@ class Phrap(AbstractCommandline):
             _Option(['-indexwordsize','indexwordsize'],)
 
        ]
+       def get_result_paths(self, cwd=''):
+           results = dict()
+           results['contigs'] = os.path.join(cwd,self.parameters.infile +
+                   '.contigs')
+           results['contigs_qual'] = os.path.join(cwd,self.parameters.infile +
+                   '.contigs.qual')
+           results['log'] = os.path.join(cwd,self.parameters.infile +
+                   '.log')
+           results['problems'] = os.path.join(cwd,self.parameters.infile +
+                   '.problems')
+           results['problems_qual'] = os.path.join(cwd,self.parameters.infile +
+                   '.problems.qual')
+           results['singlets'] = os.path.join(cwd,self.parameters.infile +
+                   '.siglets')
+           return results

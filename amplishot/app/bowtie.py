@@ -31,7 +31,124 @@ __status__ = "Development"
 
 ###############################################################################
 
-from Bio.Application import _Switch, _Option, AbstractCommandline
+from Bio.Application import _Switch, _Option, _Argument, AbstractCommandline
+
+
+class BowtieIndex(AbstractCommandline):
+    """ Simple wrapper for bowtie index
+    """
+    def __init__(self, cmd='bowtie2-build', **kwargs):
+        self.parameters = [
+            _Argument(['ref', 'reference', 'file', 'reference_in'],
+                '''A comma-separated\
+                list of FASTA files containing the reference sequences\
+                to be aligned to, or, if -c is specified, the sequences\
+                themselves.\
+                E.g., chr1.fa,chr2.fa,chrX.fa,chrY.fa, or,\
+                if -c is specified, this might be GGTCATCCT,ACGGGTCGT.''',
+                filename=True)
+            _Argument(['prefix', 'index', 'bt2_base'],
+                '''The basename of the index files to write.\
+                    By default, bowtie2-build writes files named\
+                    NAME.1.bt2, NAME.2.bt2, NAME.3.bt2, NAME.4.bt2,\
+                    NAME.rev.1.bt2, and NAME.rev.2.bt2,\
+                    where NAME is <bt2_base>.''', filename=True)
+            _Switch(['-f', 'f', 'fasta'], '''The reference input files\
+                    (specified as <reference_in>) are FASTA files\
+                    (usually having extension .fa, .mfa, .fna or similar).''')
+            _Switch(['-c', 'c'], '''The reference sequences are given on\
+                    the command line. I.e. <reference_in> is a\
+                    comma-separated list of sequences rather than\
+                    a list of FASTA files.''')
+            _Switch(['-a', 'a', 'noauto'], '''Disable the default behavior\
+                    whereby bowtie2-build automatically selects values for\
+                    the --bmax, --dcv and --packed parameters according\
+                    to available memory. Instead, user may specify values\
+                    for those parameters. If memory is exhausted during\
+                    indexing, an error message will be printed;\
+                    it is up to the user to try new parameters.''')
+            _Switch(['-p', 'p', 'packed'],
+                    '''Use a packed (2-bits-per-nucleotide) representation\
+                    for DNA strings. This saves memory but makes indexing\
+                    2-3 times slower. Default: off. This is configured\
+                    automatically by default; use -a/--noauto\
+                    to configure manually.''')
+            _Option(['--bmax', 'bmax'],
+                    '''The maximum number of suffixes allowed in a block.\
+                    Allowing more suffixes per block makes indexing\
+                    faster, but increases peak memory usage. Setting this\
+                    option overrides any previous setting for --bmax, or\
+                    --bmaxdivn. Default (in terms of the --bmaxdivn\
+                    parameter) is --bmaxdivn 4. This is configured\
+                    automatically by default; use -a/--noauto to\
+                    configure manually.''')
+            _Option(['--bmaxdivn', 'bmaxdivn'],
+                    '''The maximum number of suffixes allowed in a block,\
+                    expressed as a fraction of the length of the\
+                    reference. Setting this option overrides any previous\
+                    setting for --bmax, or --bmaxdivn.\
+                    Default: --bmaxdivn 4. This is configured\
+                    automatically by default; use -a/--noauto to\
+                    configure manually.''')
+            _Option(['--dcv', 'dcv'],
+                    '''Use as the period for the difference-cover sample.\
+                    A larger period yields less memory overhead, but may\
+                    make suffix sorting slower, especially if repeats\
+                    are present. Must be a power of 2 no greater than\
+                    4096. Default: 1024. This is configured automatically\
+                    by default; use -a/--noauto to configure manually.''')
+            _Option(['--nodc', 'nodc'],
+                    '''Disable use of the difference-cover sample. Suffix\
+                    sorting becomes quadratic-time in the worst case\
+                    (where the worst case is an extremely repetitive\
+                    reference). Default: off.''')
+            _Switch(['-r', 'r', 'noref'],
+                    '''Do not build the NAME.3.bt2 and NAME.4.bt2\
+                    portions of the index, which contain a bitpacked\
+                    version of the reference sequences and are used\
+                    for paired-end alignment.''')
+            _Switch(['-3', 'justref'],
+                    '''Build only the NAME.3.bt2 and NAME.4.bt2 portions\
+                    of the index, which contain a bitpacked version of\
+                    the reference sequences and are used for\
+                    paired-end alignment.''')
+            _Option(['-o', 'o', 'offrate'],
+                    '''To map alignments back to positions on the\
+                    reference sequences, it's necessary to annotate\
+                    ("mark") some or all of the Burrows-Wheeler rows with\
+                    their corresponding location on the genome.\
+                    -o/--offrate governs how many rows get marked: the\
+                    indexer will mark every 2^<int> rows. Marking more\
+                    rows makes reference-position lookups faster, but\
+                    requires more memory to hold the annotations at\
+                    runtime. The default is 5 (every 32nd row is marked;\
+                    for human genome, annotations occupy about\
+                    340 megabytes).''')
+            _Option(['-t', 't', 'ftabchars'],
+                    '''The ftab is the lookup table used to calculate\
+                    an initial Burrows-Wheeler range with respect to the\
+                    first <int> characters of the query. A larger <int>\
+                    yields a larger lookup table but faster query times.\
+                    The ftab has size 4^(<int>+1) bytes. The default\
+                    setting is 10 (ftab is 4MB).''')
+
+            _Option(['--seed', 'seed'],
+                    '''Use <int> as the seed for pseudo-random number\
+                    generator.''')
+            _Option(['--cutoff', 'cutoff'],
+                    '''Index only the first <int> bases of the reference\
+                    sequences (cumulative across sequences) and ignore\
+                    the rest.''')
+            _Switch(['-q', 'q', 'quiet'],
+                    '''bowtie2-build is verbose by default. With this\
+                    option bowtie2-build will print only error messages.''')
+
+            _Switch(['-h', 'h', 'help'],
+                    '''Print usage information and quit.''')
+
+            _Switch(['--version', 'version'],
+                    '''Print version information and quit.''')
+        ]
 
 
 class Bowtie(AbstractCommandline):
@@ -40,7 +157,7 @@ class Bowtie(AbstractCommandline):
     def __init__(self, cmd='bowtie2', **kwargs):
 
         self.parameters = [
-            _Option(['-x','bt2-idx','x'],
+            _Option(['-x','bt2-idx','x', 'index'],
             '''Index filename prefix (minus trailing .X.bt2).
          NOTE: Bowtie 1 and Bowtie 2 indexes are not compatible.''',
          filename=True, is_required=True)
@@ -52,7 +169,7 @@ class Bowtie(AbstractCommandline):
             '''Files with #2 mates, paired with files in <m1>.
          Could be gzip'ed (extension: .gz) or bzip2'ed (extension:
          .bz2).''', filename=True)
-            _Option(['-U','U'],
+            _Option(['-U', 'U', 'unpaired_reads'],
             '''Files with unpaired reads.
          Could be gzip'ed (extension: .gz) or bzip2'ed (extension:
          .bz2).''', filename=True)

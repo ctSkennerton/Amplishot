@@ -94,7 +94,7 @@ class FastxReader(object):
             self.fp = open(self.fp)
 
 
-    def parse(self, callback = None, **kwargs):
+    def parse(self, callback=None, **kwargs):
         last = None # this is a buffer keeping the last unprocessed line
         while True: # mimic closure; is it a bad idea?
             if not last: # the first record or a record following a fastq

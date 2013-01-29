@@ -146,13 +146,13 @@ class TaxonSegregator(object):
         """
         format = self._check_taxonomy_file_format(taxonfp)
         if format == 'ggs':
-            print "taxonomy file is ggs"
+    #        print "taxonomy file is ggs"
             self._parse_greengenes_sparate(taxonfp)
         elif format == 'ggc':
-            print "taxonomy file is ggc"
+    #        print "taxonomy file is ggc"
             self._parse_greengenes_combined(taxonfp)
         elif format == 'sil':
-            print "taxonomy file is sil"
+    #        print "taxonomy file is sil"
             self._parse_silva(taxonfp)
 
     def _check_taxon_coverage(self, taxon, minCount, minCoverage):
@@ -225,7 +225,7 @@ class TaxonSegregator(object):
         samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
         for read in samf.parse():
             if not read.is_unmapped():
-                if float(read.qlen - read.tags['NM'])/ float(read.qlen) >= percentId:
+                if read.percent_identity() >= percentId:
                     t = self.ref_taxon_mapping[read.rname]
                     self.taxon_mapping[t].append(read)
                 else:

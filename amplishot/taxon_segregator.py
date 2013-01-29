@@ -228,6 +228,17 @@ class TaxonSegregator(object):
                 if float(read.qlen - read.tags['NM'])/ float(read.qlen) >= percentId:
                     t = self.ref_taxon_mapping[read.rname]
                     self.taxon_mapping[t].append(read)
+                else:
+                    try:
+                        self.taxon_mapping[tuple(['root'])].append(read)
+                    except KeyError:
+                        self.taxon_mapping[tuple(['root'])] = [read]
+            else:
+                try:
+                    self.taxon_mapping[tuple(['root'])].append(read)
+                except KeyError:
+                    self.taxon_mapping[tuple(['root'])] = [read]
+
 
     def segregate(self, root='root', mergeUpLevel=5, minCount=1000,
             minCoverage=2, fasta=True, qual=True,

@@ -1,8 +1,9 @@
 #!/usr/bin/python
 ###############################################################################
 #
-# amplishot.py - Pipeline for generating full-length 16S sequences and performing
-#                community abundance measurements on the output#
+# amplishot.py - Pipeline for generating full-length 16S sequences and
+#                performing community abundance measurements on the output
+#
 ###############################################################################
 #                                                                             #
 #    This program is free software: you can redistribute it and/or modify     #
@@ -38,9 +39,10 @@ import os
 import shutil
 import subprocess
 import textwrap
-
-import amplishot.parse.fastx 
+from collections import defaultdict
+import amplishot.parse.fastx
 from amplishot import taxon_segregator
+from amplishot.app import bowtie, phrap, pandaseq
 
 ###############################################################################
 ###############################################################################
@@ -51,40 +53,7 @@ from amplishot import taxon_segregator
 ###############################################################################
 ###############################################################################
 ###############################################################################
-def panda(args):
-    panda = pandaseq.Pandaseq()
-    panda.Parameters['-o'].on(args.olap)
-    panda.Parameters['-l'].on(args.minlen)
-    panda.Parameters['-f'].on(args.read_1)  
-    panda.Parameters['-r'].on(args.read_2)
-    return panda()
 
-#def make_partition_files(names, directory=None):
-#    ret = dict()
-#    outdirs = list()
-#    for i in names:
-#        try:
-#            shutil.rmtree(os.path.join(directory,i))
-#        except:
-#            pass
-#        finally:
-#            os.mkdir(os.path.join(directory,i))
-#        outdirs.append(os.path.join(directory,i))
-#        ret[i] = open(os.path.join(directory,i,'in.fa'), 'w')
-#        ret[i+'qual'] = open(os.path.join(directory,i,'in.fa.qual'), 'w')
-#
-#    try:
-#        shutil.rmtree(os.path.join(directory,'nomatch'))
-#    except:
-#        pass
-#    finally:
-#        os.mkdir(os.path.join(directory,'nomatch'))
-#        
-#    outdirs.append(os.path.join(directory,'nomatch'))
-#    ret['nomatch'] = open(os.path.join(directory, 'nomatch','in.fa'), 'w')
-#    ret['nomatchqual'] = open(os.path.join(directory, 'nomatch','in.fa.qual'), 'w')
-#        
-#    return ret, outdirs
 
 def map_to_reference(inreads, bowtiedb, threads):
     """Take overlapped reads from pandaseq and map them to reference sequences
@@ -92,14 +61,15 @@ def map_to_reference(inreads, bowtiedb, threads):
        inreads: path to file containing overlapped reads from pandaseq
        bowtiedb: path to fileprefix of the bowtie database
     """
-    sam = tempfile.NamedTemporaryFile(suffix='.sam', delete=False)
-    with open(os.devnull, 'w') as fnull:
-        subprocess.call(['bowtie2', '-U',inreads, '-x', bowtiedb, '-p',
-            str(threads)], stdout = sam,
-            stderr = fnull)
-    
-    sam.close()
-    return sam.name
+    b = bowtie.Bowtie(U=inreads, index=bowtiedb, threads=threads)
+    stdout, stderr = b(stderr=False)
+    #sam = tempfile.NamedTemporaryFile(suffix='.sam', delete=False)
+    #with open(os.devnull, 'w') as fnull:
+    #    subprocess.call(['bowtie2', '-U', inreads, '-x', bowtiedb, '-p',
+    #        str(threads)], stdout = sam, stderr = fnull)
+    #sam.close()
+    return stdout, stderr
+
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     """Call the taxon segregator and return a list of tuples of taxonomies that
@@ -109,8 +79,8 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     taxseg.parse_sam(samfile)
     return taxseg.segregate(root=rootdir)
 
+
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
-    #print ' '.join(["cd-hit-est","-c","0.98", "-M", "1000","-o", os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)])
     proc = subprocess.Popen(["cd-hit-est","-c","0.98", "-M", "1000","-o",
                 os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -119,7 +89,8 @@ def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
     return_value = proc.returncode
     return stdout, stderr, return_value
 
-def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa'):
+
+def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
     clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
     clustered_reads = set()
     cd_hit_fasta = open(os.path.join(directory,cdhitout))
@@ -136,20 +107,36 @@ def process_cd_hit_results(directory, cdhitout = 'cdhitout.fa', cdhitin = 'in.fa
     inqual.close()
 
 
-def phrap_assemble(workingdir, infile='cdhitout.fa', suppressStdout=True, suppressStderr=True):
-    out = None
-    err = None
-    if suppressStdout:
-        out = open(os.devnull, "w")
-    if suppressStderr:
-        err = open(os.devnull, "w")
-    return subprocess.call(['phrap',infile,'-minscore','300'],
-            stderr=err, stdout=out, cwd=workingdir)
+def phrap_assemble(workingdir, infile='cdhitout.fa',
+        suppressStdout=True, suppressStderr=True, minscore=300):
+    p = phrap.Phrap(infile=infile, minscore=minscore)
+    stdout, stderr = p(stdout=suppressStdout, stderr=suppressStderr,
+           cwd=workingdir)
 
-def demultiplex(args): pass
-def assemble(args): pass
-def overlap(args): pass
-def map_reads(args): pass
+    return stdout, stderr, p.get_result_paths()
+    #out = None
+    #err = None
+    #if suppressStdout:
+    #    out = open(os.devnull, "w")
+    #if suppressStderr:
+    #    err = open(os.devnull, "w")
+    #return subprocess.call(['phrap', infile, '-minscore','300'],
+    #        stderr=err, stdout=out, cwd=workingdir)
+
+def demultiplex(args):
+    pass
+def assemble(args):
+    pass
+
+
+def overlap(args):
+    panda = pandaseq.Pandaseq(overlap=args.overlap, minlength=args.minlength)
+    stdout, stderr = panda()
+    return stdout, stderr
+
+
+def map_reads(args):
+    pass
 
 def filter_sam(args): 
     taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
@@ -169,22 +156,29 @@ def pipeline(args):
 
     # map overlapped fragments with bowtie
     print 'mapping with bowtie...'
-    sams= []
+    sams = []
     for samfile in args.file:
-        sams.append( map_to_reference(samfile, args.bowtiedb, args.threads))
+        sams.append(map_to_reference(samfile, args.bowtiedb, args.threads))
 
     try:
         index = 0
+        # create the file for all the full-length seqs
+        full_length_seqs =
+        open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')
         for samfile in sams:
-            print 'processing %s...' % args.file[index] 
+            print 'processing %s...' % args.file[index]
+            sample_file_name =\
+            os.path.splitext(os.path.basename(args.file[index]))[0]
             taxon_root = os.path.join(args.outdir,
-                os.path.basename(args.file[index]),'root')
+                sample_file_name, 'root')
 
             # partition dataset based on mapped reads
             print '\tpartitioning...'
             good_taxons, bad_taxons = taxon_partition(samfile, args.taxonomy,
                     rootdir=taxon_root)
-            print '\tThere are %i taxons suitable for assembly and %i taxons with incomplete coverage' % (len(good_taxons), len(bad_taxons))
+            print '\tThere are %i taxons suitable for assembly'\
+                    ' and %i taxons with incomplete coverage'\
+                    % (len(good_taxons), len(bad_taxons))
             if len(good_taxons) < 1:
                 print "\tNo taxons for assembly"
             else:
@@ -201,22 +195,63 @@ def pipeline(args):
 
                 ## generate overlaps - phrap - each partition - threaded
                 for t in good_taxons:
-                    phrap_assemble(t)
-                #chimera checking - uchime, decipher, chimeraslayer
+                    stdout, stderr, results = phrap_assemble(t)
+                    # collect all full-length sequences
+                    with open(results['contigs']) as fp:
+                        fxparser = amplishot.parse.fastx.FastxReader(fp)
+                        full_length_counter = 1
+                        for name, seq, qual in
+                        fxparser.parse(callback=amplishot.parse.fastx.greater_than,
+                                length=1000):
+                            full_length_seqs.write('>%s_%i\n%s\n' %
+                                    (sample_file_name, full_length_counter += 1,
+                                    seq))
+            i += 1
 
-                #read alignment - bwa
+        full_length_seqs.close()
+        # pick OTUs and representative set
+        out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
+                outputFilePath=os.path.join(root_dir, 'full_length_otus.txt'))
+        rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
+                outputFilePath=os.path.join(root_dir, 'full_length_rep_set.fa'))
+        rep_set_seqs = dict()
+        with open(rep_set) as fp:
+            fxparser = amplishot.parse.fastx(fp)
+            for name, seq, qual in fxparser.parse():
+                rep_set_seqs[name] = seq
 
-                #generate abundance based on coverage
+        #assign taxonomy
+        sam_alignments, bowtie_error = map_to_reference(rep_set,
+                args.bowtiedb, args.threads)
+        taxon_mapper = amplishot.taxon_segregator(args.taxonomy)
+        taxon_mapper.parse_sam(sam_alignments)
+        sam_alignments.close()
+        bowtie_error.close()
 
-                #assign taxonomy
+        observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
+        for taxon, otu_representatives in taxon_mapper.taxon_mapping.items():
+            tax_string =\
+            amplishot.assign_taxonomy.get_greengenes_tax_string(taxon)
+            for otu in otu_representatives:
+                observation_metadata[otu]['taxonomy'] = tax_string
+        
+        # create Bowtie database from representative set
+        abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
+                root_dir)
+        #generate abundance based on coverage and create OTU table
+        for read_file in args.file:
+            abundance.generate_abundance(read_file)
+        
+        abundance.add_metadata(observation_metadata=observation_metadata)
+        
+        print abundance
 
-                #generte OTU table
-            
-            index += 1
+
     finally:
         for sam in sams:
             if os.path.exists(sam):
                 os.remove(sam)
+
 
 ###############################################################################
 ###############################################################################
@@ -354,7 +389,7 @@ if __name__ == '__main__':
             Must be in bowtie2 format')
     map_parser.add_argument('-o', '--out-sam', dest='sam', required=True,
             help='output file in sam format for alignments')
-    map_parser.add_argument('file', nargs='+', 
+    map_parser.add_argument('file', nargs='+',
             help='input files containing assembled fragments')
     map_parser.set_defaults(func=map_reads)
 
@@ -363,7 +398,7 @@ if __name__ == '__main__':
     # amplishot filter [OPTIONS] <file.sam>...
     filter_parser = subparser.add_parser('filter',
             help='segregate reads based on the similarity and taxonomy\
-            of reference sequences', 
+            of reference sequences',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser]
             )
@@ -373,7 +408,7 @@ if __name__ == '__main__':
             dest='taxonomy', help='A mapping file in either Greengenes or\
             SILVA format that maps the reference IDs to their taxonomies')
     filter_parser.add_argument('-p', '--percent-id', type=float, default=0.98,
-            dest='percentid', 
+            dest='percentid',
             help='The global percentage Identity that a read must have to the\
             reference sequence. A good rule of thumb is to set this value to\
             be 1% lower than the clustering percentage used on the reference\
@@ -388,7 +423,7 @@ if __name__ == '__main__':
             help='After taxonomic filtering, this value dictates the minimum\
             number of bases that must have query bases mapping to them for\
             the entire taxon')
-    filter_parser.add_argument('sam', nargs='+', 
+    filter_parser.add_argument('sam', nargs='+',
             help='sam formatted files containing assembled fragments for\
             taxonomic filtering')
     filter_parser.set_defaults(func=filter_sam)
@@ -396,16 +431,16 @@ if __name__ == '__main__':
 #--------------------
     #clustering parser
     # amplishot cluster [OPTIONS] <file>...
-    cluster_parser = subparser.add_parser('cluster', 
+    cluster_parser = subparser.add_parser('cluster',
             help='Remove redundant coverage in taxons.  Greating decreases\
             assembly time',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser]
             )
     cluster_parser.add_argument('-p', '--percent-identity', type=float,
-            default=0.98, dest='percentid', 
+            default=0.98, dest='percentid',
             help='The percent identity that two reads must have to be clustered')
-    cluster_parser.add_argument('file', nargs='+', 
+    cluster_parser.add_argument('file', nargs='+',
             help='fasta files containing reads to be clustered')
     cluster_parser.set_defaults(func=cluster)
 
@@ -420,12 +455,12 @@ if __name__ == '__main__':
     assembly_parser.add_argument('-m', '--min-score', dest='minscore',
             type=int, default=300,
             help='The minimum alignment score used in phrap')
-    assembly_parser.add_argument('file', nargs='+', 
+    assembly_parser.add_argument('file', nargs='+',
             help='Path to files containing taxonomies for assembly')
     assembly_parser.set_defaults(func=assemble)
 
-    args = parser.parse_args()        
-    args.func(args) 
+    args = parser.parse_args()
+    args.func(args)
 
 
 ###############################################################################

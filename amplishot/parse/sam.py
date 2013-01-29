@@ -149,7 +149,6 @@ class BamFileReader(object):
     pass
 
 
-
 class SamFileReader(object):
     def __init__(self, f, parseHeader=True, parseTags=True):
         super(SamFileReader, self).__init__()

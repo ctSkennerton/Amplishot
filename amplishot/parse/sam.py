@@ -33,6 +33,12 @@ __status__ = "Development"
 ###############################################################################
 ###############################################################################
 ###############################################################################
+class SamReadError(Exception):
+    pass
+
+
+class AlignmentTagError(SamReadError):
+    pass
 
 class SamRead(object):
     
@@ -55,6 +61,7 @@ class SamRead(object):
         self.qlen = len(self.seq)
         self.qual = fields[10]
         self.tags = None
+        self.tags_available = parseTags
         if parseTags:
             self.parse_tags(fields[11])
         else:
@@ -143,6 +150,14 @@ class SamRead(object):
     def is_duplicate(self):
         return self.flag & 0x400
 
+    def percent_identity(self):
+        if not self.tags_available or not self.tags.has_key('NM'):
+            raise AlignmentTagError('Cannot calculate percent identity as\
+                    either the tags were not parsed or the NM tag is not\
+                    present')
+        return float(self.qlen - self.tags['NM']) / float(self.qlen)
+
+
 class SamFileError(Exception): pass
 
 class BamFileReader(object):
@@ -150,10 +165,15 @@ class BamFileReader(object):
 
 
 class SamFileReader(object):
-    def __init__(self, f, parseHeader=True, parseTags=True):
+    def __init__(self, f, parseHeader=True, parseTags=True, parseString=False):
         super(SamFileReader, self).__init__()
         try:
-            self.fp = open(f)
+            if parseString:
+                self.fp = f.splitlines()
+            elif isinstance(f, file):
+                self.fp = f
+            else:
+                self.fp = open(f)
             self.header = dict()
             self._parse_header(parseHeader)
         except OSError:

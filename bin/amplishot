@@ -41,7 +41,7 @@ import subprocess
 import textwrap
 from collections import defaultdict
 import amplishot.parse.fastx
-from amplishot import taxon_segregator
+from amplishot import taxon_segregator, otu_table, assign_taxonomy
 from amplishot.app import bowtie, phrap, pandaseq
 
 ###############################################################################
@@ -55,21 +55,20 @@ from amplishot.app import bowtie, phrap, pandaseq
 ###############################################################################
 
 
-def map_to_reference(inreads, bowtiedb, threads):
+def map_to_reference(stderr=False, stdout=True, **kwargs):
     """Take overlapped reads from pandaseq and map them to reference sequences
        returns path to output file containing sam formated alignments
        inreads: path to file containing overlapped reads from pandaseq
        bowtiedb: path to fileprefix of the bowtie database
     """
-    b = amplishot.app.bowtie.Bowtie(U=inreads, index=bowtiedb, threads=threads)
+    b = amplishot.app.bowtie.Bowtie(**kwargs)
     print b
-    stdout, stderr = b(stderr=False)
+    return b(stderr=stderr, stdout=stdout)
     #sam = tempfile.NamedTemporaryFile(suffix='.sam', delete=False)
     #with open(os.devnull, 'w') as fnull:
     #    subprocess.call(['bowtie2', '-U', inreads, '-x', bowtiedb, '-p',
     #        str(threads)], stdout = sam, stderr = fnull)
     #sam.close()
-    return stdout, stderr
 
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):
@@ -110,12 +109,12 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
 
 def phrap_assemble(workingdir, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True, minscore=300):
-    p = phrap.Phrap(infile=infile, minscore=minscore)
+    p = amplishot.app.phrap.Phrap(infile=infile, minscore=minscore)
     print p
     stdout, stderr = p(stdout=suppressStdout, stderr=suppressStderr,
            cwd=workingdir)
 
-    return stdout, stderr, p.get_result_paths()
+    return stdout, stderr, p.get_result_paths(cwd=workingdir)
     #out = None
     #err = None
     #if suppressStdout:
@@ -159,102 +158,94 @@ def pipeline(args):
     # map overlapped fragments with bowtie
     print 'mapping with bowtie...'
     sams = []
-    for samfile in args.file:
-        sams.append(map_to_reference(samfile, args.bowtiedb, args.threads))
+    # create the file for all the full-length seqs
+    full_length_seqs =\
+    open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')
 
-    try:
-        index = 0
-        # create the file for all the full-length seqs
-        full_length_seqs =\
-        open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')
-        for samfile in sams:
-            print 'processing %s...' % args.file[index]
-            sample_file_name =\
-            os.path.splitext(os.path.basename(args.file[index]))[0]
-            taxon_root = os.path.join(args.outdir,
-                sample_file_name, 'root')
+    for readfile in args.file:
+        print 'processing %s...' % readfile
+        tmp_samfile = tempfile.TemporaryFile()
+        bowtie_stdout, bowtie_stderror = map_to_reference( U=readfile,
+                index=args.bowtiedb, threads=args.threads, )
+        tmp_samfile.write(bowtie_stdout)
+        # go back to the start of the file
+        tmp_samfile.seek(0)
+        sample_file_name =\
+        os.path.splitext(os.path.basename(readfile))[0]
+        taxon_root = os.path.join(args.outdir,
+            sample_file_name, 'root')
 
-            # partition dataset based on mapped reads
-            print '\tpartitioning...'
-            good_taxons, bad_taxons = taxon_partition(samfile, args.taxonomy,
-                    rootdir=taxon_root)
+        # partition dataset based on mapped reads
+        print '\tpartitioning...'
+        good_taxons, bad_taxons = taxon_partition(tmp_samfile, args.taxonomy,
+                rootdir=taxon_root)
+        if len(good_taxons) < 1:
+            print "\tNo taxons for assembly"
+        else:
             print '\tThere are %i taxons suitable for assembly'\
                     ' and %i taxons with incomplete coverage'\
                     % (len(good_taxons), len(bad_taxons))
-            if len(good_taxons) < 1:
-                print "\tNo taxons for assembly"
-            else:
-                good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
-                
-                # dataset reduction - cd-hit - each partition - threaded
-                print '\tclustering...'
-                for t in good_taxons:
-                    cd_hit_reduce(t, infile='reads.fa')
-                
-                print '\tassembling...'
-                for t in good_taxons:
-                    process_cd_hit_results(t, cdhitin='reads.fa')
+            good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
+            
+            # dataset reduction - cd-hit - each partition - threaded
+            print '\tclustering...'
+            for t in good_taxons:
+                cd_hit_reduce(t, infile='reads.fa')
+            
+            print '\tassembling...'
+            for t in good_taxons:
+                process_cd_hit_results(t, cdhitin='reads.fa')
 
-                ## generate overlaps - phrap - each partition - threaded
-                for t in good_taxons:
-                    stdout, stderr, results = phrap_assemble(t)
-                    # collect all full-length sequences
-                    with open(results['contigs']) as fp:
-                        fxparser = amplishot.parse.fastx.FastxReader(fp)
-                        full_length_counter = 1
-                        for name, seq, qual in\
-                        fxparser.parse(callback=amplishot.parse.fastx.greater_than,
-                                length=1000):
-                            full_length_seqs.write('>%s_%i\n%s\n' %
-                                    (sample_file_name, full_length_counter,
-                                    seq))
-                            full_length_counter += 1
-            i += 1
+            ## generate overlaps - phrap - each partition - threaded
+            full_length_counter = 1
+            for t in good_taxons:
+                stdout, stderr, results = phrap_assemble(t)
+                # collect all full-length sequences
+                with open(results['contigs']) as fp:
+                    fxparser = amplishot.parse.fastx.FastxReader(fp)
+                    for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, length=1000):
+                        full_length_seqs.write('>%s_%i\n%s\n' % (sample_file_name, full_length_counter, seq))
+                        full_length_counter += 1
 
-        full_length_seqs.close()
-        # pick OTUs and representative set
-        out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
-                outputFilePath=os.path.join(root_dir, 'full_length_otus.txt'))
-        rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
-                outputFilePath=os.path.join(root_dir, 'full_length_rep_set.fa'))
-        rep_set_seqs = dict()
-        with open(rep_set) as fp:
-            fxparser = amplishot.parse.fastx(fp)
-            for name, seq, qual in fxparser.parse():
-                rep_set_seqs[name] = seq
+    full_length_seqs.close()
+    # pick OTUs and representative set
+    out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
+            outputFileName=os.path.join(root_dir, 'full_length_otus.txt'))
+    rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
+            outputFilePath=os.path.join(root_dir, 'full_length_rep_set.fa'))
+    rep_set_seqs = dict()
+    with open(rep_set) as fp:
+        fxparser = amplishot.parse.fastx.FastxReader(fp)
+        for name, seq, qual in fxparser.parse():
+            rep_set_seqs[name] = seq
 
-        #assign taxonomy
-        sam_alignments, bowtie_error = map_to_reference(rep_set,
-                args.bowtiedb, args.threads)
-        taxon_mapper = amplishot.taxon_segregator(args.taxonomy)
-        taxon_mapper.parse_sam(sam_alignments)
-        sam_alignments.close()
-        bowtie_error.close()
+    #assign taxonomy
+    taxon_mapper = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
+    with open('full_length_alignments.sam', 'w+b') as fp:
+        sam_alignments, bowtie_error = map_to_reference(U=rep_set,
+                index=args.bowtiedb, threads=args.threads, fasta=True)
+        fp.write(sam_alignments)
+        fp.seek(0)
+        taxon_mapper.parse_sam(fp)
 
-        observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
-        for taxon, otu_representatives in taxon_mapper.taxon_mapping.items():
-            tax_string =\
-            amplishot.assign_taxonomy.get_greengenes_tax_string(taxon)
-            for otu in otu_representatives:
-                observation_metadata[otu]['taxonomy'] = tax_string
-        
-        # create Bowtie database from representative set
-        abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
-                root_dir)
-        #generate abundance based on coverage and create OTU table
-        for read_file in args.file:
-            abundance.generate_abundance(read_file)
-        
-        abundance.add_metadata(observation_metadata=observation_metadata)
-        
-        print abundance
-
-
-    finally:
-        for sam in sams:
-            if os.path.exists(sam):
-                os.remove(sam)
-
+    observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
+    for taxon, otu_representatives in taxon_mapper.taxon_mapping.items():
+        tax_string =\
+        amplishot.assign_taxonomy.get_greengenes_tax_string(taxon)
+        for otu in otu_representatives:
+            observation_metadata[otu]['taxonomy'] = tax_string
+    
+    # create Bowtie database from representative set
+    abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
+            root_dir)
+    #generate abundance based on coverage and create OTU table
+    for read_file in args.file:
+        abundance.generate_abundance(read_file)
+    
+    abundance.generate_biom_table()
+    abundance.add_metadata(observation_metadata=observation_metadata)
+    
+    print abundance
 
 ###############################################################################
 ###############################################################################

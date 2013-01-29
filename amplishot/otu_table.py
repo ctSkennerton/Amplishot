@@ -60,7 +60,7 @@ class OTUTableGenerator(object):
         """
         self.seqs = dict()
         self.aliases = list()
-        self.obsrevation_ids = list()
+        self.observation_ids = list()
         self.outdir = workingDir
         self.outprefix = outFilePrefix
         self.biom_table = None
@@ -70,8 +70,10 @@ class OTUTableGenerator(object):
             self.observation_ids.append(name)
             counter += 1
 
-        # initialize the first column of the numpy array
-        self.fpkc = np.zeros(len(self.seqs))
+        # initialize the numpy array
+        # here we make it with 20 columns/samples.  If there are more they will
+        # be appended, if there are less they will be trimed
+        self.fpkc = np.zeros((len(self.seqs), 20))
 
         self._make_bowtie_index(fullLengthSeqs)
 
@@ -85,11 +87,11 @@ class OTUTableGenerator(object):
         """
         tmp = tempfile.NamedTemporaryFile(delete=False)
         for name, seq in fullLengthSeqs.items():
-            tmp.write('>%s\n%s\n' % name, seq)
+            tmp.write('>%s\n%s\n' % (name, seq))
 
         tmp.close()
-        bi = amplishot.app.bowtie.BowtieIndex(infile=tmp.name,
-                prefix=self.outprefix)
+        bi = amplishot.app.bowtie.BowtieIndex(reference_in=tmp.name,
+                index=self.outprefix)
         bi(stdout=False, stderr=False, cwd=self.outdir)
 
         os.remove(tmp.name)
@@ -102,8 +104,11 @@ class OTUTableGenerator(object):
         alias: name to give this file in the OTU table,  default is to take the
         basename of the reads file minus the extension
         """
+        tmp = tempfile.TemporaryFile()
         stdout, stderr = self._make_sam(reads)
-        tmp_fpkc = self._parse_sam(stdout)
+        tmp.write(stdout)
+        tmp.seek(0)
+        tmp_fpkc = self._parse_sam(tmp)
         if alias is None:
             alias = os.path.splitext(os.path.basename(reads))[0]
         self.aliases.append(alias)
@@ -116,6 +121,10 @@ class OTUTableGenerator(object):
         pass
 
     def generate_biom_table(self, sample_metadata=None, observation_metadata=None):
+        # trim the array if needed
+        if len(self.aliases) < self.fpkc.shape[1]:
+            self.fpkc = self.fpkc[:,0:len(self.aliases)]
+
         self.biom_table = biom.table.table_factory(self.fpkc, self.aliases,
                 self.observation_ids, sample_metadata=sample_metadata,
                 observation_metadata=observation_metadata)
@@ -131,16 +140,20 @@ class OTUTableGenerator(object):
         """
         b = amplishot.app.bowtie.Bowtie(index=os.path.join(self.outdir,
             self.outprefix), unpaired_reads=reads)
-        return b(seterr=False)
+        return b(stderr=False)
 
     def _parse_sam(self, sam, percentId=0.97):
         """ count the number of reads that map to a full length sequence
         taking into account for dud reads that need to be filtered
         """
         tmp_counts = dict()
-        samfile = amplishot.parse.sam.SamFilereader(sam, parseHeader=False)
+        samfile = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
         for read in samfile.parse():
-            tmp_counts[read.rname] += 1
+            if not read.is_unmapped() and read.percent_identity() >= percentId:
+                try:
+                    tmp_counts[read.rname] += 1
+                except KeyError:
+                    tmp_counts[read.rname] = 1
 
         return self._get_fpkc(tmp_counts)
 
@@ -151,7 +164,7 @@ class OTUTableGenerator(object):
         """
         tmp = [0.0] * len(self.seqs)
         for name in counts.keys():
-            fpkc = float(counts[name] * 1000) / float(self.seqs[name])
+            fpkc = float(counts[name] * 1000) / float(self.seqs[name][0])
             tmp[self.seqs[name][1]] = fpkc
         return tmp
 
@@ -180,7 +193,7 @@ def pick_otus(inputSeqsFilepath, otuPickingMethod='cdhit', similarity=0.98,
     return outputFileName
 
 
-def pick_rep_set(inputSeqsFilpath, inputOtuMapFilePath,
+def pick_rep_set(inputSeqsFilepath, inputOtuMapFilePath,
         outputFilePath='full_length_rep_set.fa', pickingMethod='longest',
         sortBy='otu'):
     """ Call out to qiime for picking the representative set

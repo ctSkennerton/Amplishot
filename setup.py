@@ -12,6 +12,6 @@ setup(
     license='LICENSE.txt',
     description='Amplishot',
     long_description=open('README.md').read(),
-    requires=['biopython']
+    requires=['biopython'],
     ext_modules = [Extension('_wumanber',['amplishot/search/WuManber.cpp'])]
 )

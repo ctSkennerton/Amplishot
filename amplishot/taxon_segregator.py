@@ -54,6 +54,9 @@ class TaxonSegregator(object):
     ggc_re = re.compile('\w+\t([kpcofg]__.*){6}s__.*')
     # silva file format regex
     sil_re = re.compile('.+\t(\w+;)*\w+')
+
+    #unusual chars
+    un_re = re.compile('[\s\[\]\{\}]')
     def __init__(self, taxonfile):
         """
            taxonfile: path to a file containing the mapping between reference
@@ -84,6 +87,9 @@ class TaxonSegregator(object):
         else:
             raise RuntimeError, "Taxon file format does not match any known"
 
+    def _remove_unusual_chars(self, tax):
+        return self.un_re.sub('', tax)
+
     def _parse_greengenes_sparate(self, taxonfp):
         """greengenes taxonomy file where each taxonomic division is space 
            separated
@@ -95,7 +101,7 @@ class TaxonSegregator(object):
             taxon_divisions = taxon_string.split('; ')
             names = []
             for rank in taxon_divisions:
-                names.append(rank[3:])
+                names.append(self._remove_unusual_chars(rank[3:]))
 
             self._generate_mapping(refid, names)
 
@@ -107,9 +113,10 @@ class TaxonSegregator(object):
             line = line.rstrip()
             (refid, taxon_string) = line.split('\t')
             taxon_divisions = taxon_string.split(';')
+            
             names = []
             for rank in taxon_divisions:
-                names.append(rank[3:])
+                names.append(self._remove_unusual_chars(rank[3:]))
 
             self._generate_mapping(refid, names)
 
@@ -121,6 +128,7 @@ class TaxonSegregator(object):
             line = line.rstrip()
             (refid, taxon_string) = line.split('\t')
             taxon_divisions = taxon_string.split(';')
+            taxon_divisions = [self._remove_unusual_chars(x) for x in taxon_divisions]
             self._generate_mapping(refid, taxon_divisions)
 
     def _generate_mapping(self, refid, taxon_divisions):
@@ -215,7 +223,7 @@ class TaxonSegregator(object):
             raise RuntimeError, 'Segregation has already taken place.  Please\
             parse all samfiles at one and then call segregate at the end'
         samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
-        for read in samf():
+        for read in samf.parse():
             if not read.is_unmapped():
                 if float(read.qlen - read.tags['NM'])/ float(read.qlen) >= percentId:
                     t = self.ref_taxon_mapping[read.rname]
@@ -252,7 +260,7 @@ class TaxonSegregator(object):
         sorted_taxons = self.taxon_mapping.keys()
         sorted_taxons = sorted(sorted_taxons, reverse=True, cmp=lambda x,y: cmp(len(x), len(y)))
         for taxon_ranks in sorted_taxons:
-            if not self._check_taxon_coverage(taxon_ranks, monCount,
+            if not self._check_taxon_coverage(taxon_ranks, minCount,
                     minCoverage):
                 if len(taxon_ranks) > mergeUpLevel:
                     new_taxon = []

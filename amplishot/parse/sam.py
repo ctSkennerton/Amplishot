@@ -60,7 +60,7 @@ class SamRead(object):
         else:
             self.tags = fields[11]
 
-    def parse_tags(self):
+    def parse_tags(self, tagString):
         self.tags = dict()
         tags_split = tagString.split('\t')
         for tag in tags_split:
@@ -156,8 +156,7 @@ class SamFileReader(object):
         try:
             self.fp = open(f)
             self.header = dict()
-            if parseHeader:
-                self._parse_header(parseHeader)
+            self._parse_header(parseHeader)
         except OSError:
             raise SamFileError, 'Cannot open Samfile'
 

@@ -40,120 +40,120 @@ __status__ = "Prototype"
 class Phrap(AbstractCommandline):
     """Simple phrap application controller.
     """
-    def __init__(self, cmd='phrap', **kwargs)
+    def __init__(self, cmd='phrap', **kwargs):
         self.parameters = [
 
             _Argument(['infile', 'input', 'file'],
                 'Input file containing reads in fasta format',
-                filename=True, is_required=True)
+                filename=True, is_required=True),
 
-            _Option(['-penalty', 'penalty'],)
+            _Option(['-penalty', 'penalty'],),
 
-            _Option(['-gap_init','gap_init'],)
+            _Option(['-gap_init','gap_init'],),
 
-            _Option(['-gap_ext','gap_ext'],)
+            _Option(['-gap_ext','gap_ext'],),
 
-            _Option(['-ins_gap_ext','ins_gap_ext'],)
+            _Option(['-ins_gap_ext','ins_gap_ext'],),
 
-            _Option(['-del_gap_ext','del_gap_ext'],)
+            _Option(['-del_gap_ext','del_gap_ext'],),
 
-            _Option(['-matrix','matrix'],)
+            _Option(['-matrix','matrix'],),
 
-            _Switch(['-raw','raw'],)
+            _Switch(['-raw','raw'],),
 
-            _Option(['-minmatch','minmatch'],)
+            _Option(['-minmatch','minmatch'],),
 
-            _Option(['-maxmatch','maxmatch'],)
+            _Option(['-maxmatch','maxmatch'],),
 
-            _Option(['-max_group_size','max_group_size'],)
+            _Option(['-max_group_size','max_group_size'],),
 
-            _Switch(['-word_raw','word_raw'],)
+            _Switch(['-word_raw','word_raw'],),
 
-            _Option(['-bandwidth','bandwidth'],)
+            _Option(['-bandwidth','bandwidth'],),
 
-            _Option(['-minscore','minscore'],)
+            _Option(['-minscore','minscore'],),
 
-            _Option(['-vector_bound','vector_bound'],)
+            _Option(['-vector_bound','vector_bound'],),
 
-            _Option(['-default_qual','default_qual'],)
+            _Option(['-default_qual','default_qual'],),
 
-            _Option(['-subclone_delim','subclone_delim'],)
+            _Option(['-subclone_delim','subclone_delim'],),
 
-            _Option(['-n_delim','n_delim'],)
+            _Option(['-n_delim','n_delim'],),
 
-            _Option(['-group_delim','group_delim'],)
+            _Option(['-group_delim','group_delim'],),
 
-            _Option(['-trim_start','trim_start'],)
+            _Option(['-trim_start','trim_start'],),
         
-            _Option(['-forcelevel','forcelevel'],)
+            _Option(['-forcelevel','forcelevel'],),
 
-            _Option(['-bypasslevel','bypasslevel'],)
+            _Option(['-bypasslevel','bypasslevel'],),
         
-            _Option(['-maxgap','maxgap'],)
+            _Option(['-maxgap','maxgap'],),
         
-            _Option(['-repeat_stringency','repeat_stringency'],)
+            _Option(['-repeat_stringency','repeat_stringency'],),
 
-            _Switch(['-revise_greedy','revise_greedy'],)
+            _Switch(['-revise_greedy','revise_greedy'],),
 
-            _Switch(['-shatter_greedy','shatter_greedy'],)
+            _Switch(['-shatter_greedy','shatter_greedy'],),
 
-            _Switch(['-preassemble','preassemble'],)
+            _Switch(['-preassemble','preassemble'],),
 
-            _Switch(['-force_high','force_high'],)
+            _Switch(['-force_high','force_high'],),
 
-            _Option(['-node_seg','node_seg'],)
+            _Option(['-node_seg','node_seg'],),
 
-            _Option(['-node_space','node_space'],)
+            _Option(['-node_space','node_space'],),
 
-            _Switch(['-tags','tags'],)
+            _Switch(['-tags','tags'],),
 
-            _Switch(['-screen','screen'],)
+            _Switch(['-screen','screen'],),
 
-            _Switch(['-old_ace','old_ace'],)
+            _Switch(['-old_ace','old_ace'],),
 
-            _Switch(['-new_ace','new_ace'],)
+            _Switch(['-new_ace','new_ace'],),
 
-            _Switch(['-ace','ace'],)
+            _Switch(['-ace','ace'],),
 
-            _Switch(['-view','view'],)
+            _Switch(['-view','view'],),
 
-            _Option(['-qual_show','qual_show'],)
+            _Option(['-qual_show','qual_show'],),
 
-            _Switch(['-print_extraneous_matches','print_extraneous_matches'],)
+            _Switch(['-print_extraneous_matches','print_extraneous_matches'],),
 
-            _Switch(['-retain_duplicates','retain_duplicates'],)
+            _Switch(['-retain_duplicates','retain_duplicates'],),
 
-            _Option(['-max_subclone_size','max_subclone_size'],)
+            _Option(['-max_subclone_size','max_subclone_size'],),
 
-            _Option(['-trim_penalty','trim_penalty'],)
+            _Option(['-trim_penalty','trim_penalty'],),
 
-            _Option(['-trim_score','trim_score'],)
+            _Option(['-trim_score','trim_score'],),
 
-            _Option(['-trim_qual','trim_qual'],)
+            _Option(['-trim_qual','trim_qual'],),
 
-            _Option(['-confirm_length','confirm_length'],)
+            _Option(['-confirm_length','confirm_length'],),
 
-            _Option(['-confirm_trim','confirm_trim'],)
+            _Option(['-confirm_trim','confirm_trim'],),
 
-            _Option(['-confirm_penalty','confirm_penalty'],)
+            _Option(['-confirm_penalty','confirm_penalty'],),
 
-            _Option(['-confirm_score','confirm_score'],)
+            _Option(['-confirm_score','confirm_score'],),
 
-            _Option(['-indexwordsize','indexwordsize'],)
+            _Option(['-indexwordsize','indexwordsize'],),
 
        ]
-       def get_result_paths(self, cwd=''):
-           results = dict()
-           results['contigs'] = os.path.join(cwd,self.parameters.infile +
-                   '.contigs')
-           results['contigs_qual'] = os.path.join(cwd,self.parameters.infile +
-                   '.contigs.qual')
-           results['log'] = os.path.join(cwd,self.parameters.infile +
-                   '.log')
-           results['problems'] = os.path.join(cwd,self.parameters.infile +
-                   '.problems')
-           results['problems_qual'] = os.path.join(cwd,self.parameters.infile +
-                   '.problems.qual')
-           results['singlets'] = os.path.join(cwd,self.parameters.infile +
-                   '.siglets')
-           return results
+    def get_result_paths(self, cwd=''):
+        results = dict()
+        results['contigs'] = os.path.join(cwd,self.parameters.infile +
+               '.contigs')
+        results['contigs_qual'] = os.path.join(cwd,self.parameters.infile +
+               '.contigs.qual')
+        results['log'] = os.path.join(cwd,self.parameters.infile +
+               '.log')
+        results['problems'] = os.path.join(cwd,self.parameters.infile +
+               '.problems')
+        results['problems_qual'] = os.path.join(cwd,self.parameters.infile +
+               '.problems.qual')
+        results['singlets'] = os.path.join(cwd,self.parameters.infile +
+               '.siglets')
+        return results

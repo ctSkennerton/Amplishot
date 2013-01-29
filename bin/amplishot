@@ -61,7 +61,8 @@ def map_to_reference(inreads, bowtiedb, threads):
        inreads: path to file containing overlapped reads from pandaseq
        bowtiedb: path to fileprefix of the bowtie database
     """
-    b = bowtie.Bowtie(U=inreads, index=bowtiedb, threads=threads)
+    b = amplishot.app.bowtie.Bowtie(U=inreads, index=bowtiedb, threads=threads)
+    print b
     stdout, stderr = b(stderr=False)
     #sam = tempfile.NamedTemporaryFile(suffix='.sam', delete=False)
     #with open(os.devnull, 'w') as fnull:
@@ -110,6 +111,7 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
 def phrap_assemble(workingdir, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True, minscore=300):
     p = phrap.Phrap(infile=infile, minscore=minscore)
+    print p
     stdout, stderr = p(stdout=suppressStdout, stderr=suppressStderr,
            cwd=workingdir)
 
@@ -163,7 +165,7 @@ def pipeline(args):
     try:
         index = 0
         # create the file for all the full-length seqs
-        full_length_seqs =
+        full_length_seqs =\
         open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')
         for samfile in sams:
             print 'processing %s...' % args.file[index]
@@ -200,12 +202,13 @@ def pipeline(args):
                     with open(results['contigs']) as fp:
                         fxparser = amplishot.parse.fastx.FastxReader(fp)
                         full_length_counter = 1
-                        for name, seq, qual in
+                        for name, seq, qual in\
                         fxparser.parse(callback=amplishot.parse.fastx.greater_than,
                                 length=1000):
                             full_length_seqs.write('>%s_%i\n%s\n' %
-                                    (sample_file_name, full_length_counter += 1,
+                                    (sample_file_name, full_length_counter,
                                     seq))
+                            full_length_counter += 1
             i += 1
 
         full_length_seqs.close()

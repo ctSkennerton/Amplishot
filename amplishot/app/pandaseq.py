@@ -42,7 +42,7 @@ class Pandaseq(AbstractCommandline):
             _Switch(['-B', 'B', 'unbarcoded'],
                 'Allow unbarcoded sequences (try this for BADID errors)'),
             _Option(['-C', 'C', 'module'],
-                'Load a sequence validation module'),
+                'Load a sequence validation module', equate=False),
             _Option(['-d', 'd', 'logging_flags'],
             'Control the logging messages. Capital to enable; small to disable.\
     		(R)econstruction detail.\
@@ -50,33 +50,36 @@ class Pandaseq(AbstractCommandline):
     		(F)ile processing.\
     		(k)-mer table construction.\
     		Show every (m)ismatch.\
-    		Optional (s)tatistics.'),
+    		Optional (s)tatistics.', equate=False),
             _Option(['-f', 'f', 'forward_reads'],'Input FASTQ file containing forward reads.',
-                 filename=True, is_required=True),
+                 filename=True, is_required=True, equate=False),
             _Switch(['-F', 'F', 'fastq'], 
                 'Output FASTQ instead of FASTA.'),
             _Switch(['-j', 'j', 'bzipped'],
                 'Input files are bzipped.'),
             _Option(['-l', 'l', 'minlength'],
-                'Minimum length for a sequence'),
+                'Minimum length for a sequence', equate=False),
             _Option(['-L', 'L', 'maxlength'],
-                'Maximum length for a sequence'),        
+                'Maximum length for a sequence', equate=False),        
             _Switch(['-N', 'N', 'no_unknown'],
                 'Eliminate all sequences with unknown nucleotides in the output.'),
             _Option(['-o', 'o', 'overlap'],
-                'Minimum overlap between forward and reverse reads (default = 1)',),
+                'Minimum overlap between forward and reverse reads (default = 1)',
+                equate=False),
             _Option(['-p', 'p', 'forward_primer'], 
-                'Forward primer sequence or number of bases to be removed.'),
+                'Forward primer sequence or number of bases to be removed.',
+                equate=False),
             _Option(['-q', 'q', 'reverse_primer'],
-                'Reverse primer sequence or number of bases to be removed.'),
+                'Reverse primer sequence or number of bases to be removed.',
+                equate=False),
             _Option(['-r', 'r', 'reverse_reads'],
                 'Input FASTQ file containing reverse reads.', 
-                filename=True, is_required=True),
+                filename=True, is_required=True, equate=False),
             _Option(['-t', 't', 'primer_probability'],
                 'The minimum probability that a sequence must have to match a primer. (default = 6.000000e-01)'),
             _Option(['-T', 'T', 'threads'],
-                'Run with a number of parallel threads.'),
+                'Run with a number of parallel threads.', equate=False),
             ]
-        super(Pandaseq, self).__init__(cmd, **kwargs)
+        super(Pandaseq, self).__init__(self, cmd, **kwargs)
         
 

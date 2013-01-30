@@ -230,14 +230,14 @@ class TaxonSegregator(object):
                     self.taxon_mapping[t].append(read)
                 else:
                     try:
-                        self.taxon_mapping[tuple(['root'])].append(read)
+                        self.taxon_mapping[tuple()].append(read)
                     except KeyError:
-                        self.taxon_mapping[tuple(['root'])] = [read]
+                        self.taxon_mapping[tuple()] = [read]
             else:
                 try:
-                    self.taxon_mapping[tuple(['root'])].append(read)
+                    self.taxon_mapping[tuple()].append(read)
                 except KeyError:
-                    self.taxon_mapping[tuple(['root'])] = [read]
+                    self.taxon_mapping[tuple()] = [read]
 
 
     def segregate(self, root='root', mergeUpLevel=5, minCount=1000,

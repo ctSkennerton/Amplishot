@@ -226,14 +226,17 @@ def pipeline(args):
                 index=args.bowtiedb, threads=args.threads, fasta=True)
         fp.write(sam_alignments)
         fp.seek(0)
-        taxon_mapper.parse_sam(fp)
+        taxon_mapper.parse_sam(fp, percentId=0.90)
 
     observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
     for taxon, otu_representatives in taxon_mapper.taxon_mapping.items():
-        tax_string =\
-        amplishot.assign_taxonomy.get_greengenes_tax_string(taxon)
+        gg_tax =\
+        amplishot.assign_taxonomy.greengenes_format(taxon)
         for otu in otu_representatives:
-            observation_metadata[otu]['taxonomy'] = tax_string
+            observation_metadata[otu.qname]['taxonomy'] = gg_tax
+            observation_metadata[otu.qname]['percent identity'] =\
+            otu.percent_identity()
+            observation_metadata[otu.qname]['cigar'] = otu.cigar
     
     # create Bowtie database from representative set
     abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
@@ -244,8 +247,12 @@ def pipeline(args):
     
     abundance.generate_biom_table()
     abundance.add_metadata(observation_metadata=observation_metadata)
-    
-    print abundance
+    with open('abundances.biom', 'w') as fp:
+        fp.write(str(abundance))
+
+    abundance.normalize()
+    with open('abundances.normalized.biom', 'w') as fp:
+        fp.write(str(abundance))
 
 ###############################################################################
 ###############################################################################

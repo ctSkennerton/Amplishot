@@ -36,14 +36,19 @@ class GreengenesFormatingError(Exception):
 
 GREENGENES_PREFIXES = ['k__', 'p__', 'c__', 'o__', 'f__', 'g__', 's__']
 
-def get_greengenes_tax_string(taxon_ranks):
+def greengenes_format(taxon_ranks):
     if len(taxon_ranks) > 7:
         raise GreengenesFormatingError, "There must be exactly 7 levels of\
     taxonomy for correctly formated greengenes tax string. %i found" %\
         len(taxon_ranks)
-    tax_str = ''
+    tax = [''] * 7
     for i in range(7):
-        tax_str += GREENGENES_PREFIXES[i]
         if i < len(taxon_ranks):
-            tax_str += taxon_ranks[i]
-        tax_str += ';'
+            tax[i] = GREENGENES_PREFIXES[i] + taxon_ranks[i]
+        else:
+            tax[i] = GREENGENES_PREFIXES[i]
+    return tax
+
+
+def get_greengenes_tax_string(taxon_ranks):
+    return ';'.join(greengenes_format(taxon_ranks))

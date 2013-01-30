@@ -167,6 +167,8 @@ class BamFileReader(object):
 class SamFileReader(object):
     def __init__(self, f, parseHeader=True, parseTags=True, parseString=False):
         super(SamFileReader, self).__init__()
+        self.parse_tags = parseTags
+        self.parse_header = parseHeader
         try:
             if parseString:
                 self.fp = f.splitlines()
@@ -175,7 +177,6 @@ class SamFileReader(object):
             else:
                 self.fp = open(f)
             self.header = dict()
-            self._parse_header(parseHeader)
         except OSError:
             raise SamFileError, 'Cannot open Samfile'
 
@@ -204,19 +205,15 @@ class SamFileReader(object):
             except KeyError:
                 self.header[header_code] = [line[3:]]
 
-    def _parse_header(self, saveInfo):
-        for line in self.fp:
-            line = line.rstrip()
-            if line[0] != '@':
-                break
-            elif saveInfo:
-                self._parse_header_line(line)
-
-
     def parse(self):
         for line in self.fp:
-            fields = line.split('\t', 11)
-            if len(fields) != 12:
-                print 'malformed alignment.\nnumber of fields: %i\nline is: %s' % (len(fields), line)
-                raise SamFileError
-            yield SamRead(fields)
+            line = line.rstrip()
+            if line[0] == '@':
+                if self.parse_header:
+                    self._parse_header_line(line)
+            else:
+                fields = line.split('\t', 11)
+                if len(fields) != 12:
+                    print 'malformed alignment.\nnumber of fields: %i\nline is: %s' % (len(fields), line)
+                    raise SamFileError
+                yield SamRead(fields)

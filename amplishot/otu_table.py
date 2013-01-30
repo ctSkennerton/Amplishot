@@ -61,12 +61,14 @@ class OTUTableGenerator(object):
         self.seqs = dict()
         self.aliases = list()
         self.observation_ids = list()
+        self.lengths = list()
         self.outdir = workingDir
         self.outprefix = outFilePrefix
         self.biom_table = None
         counter = 0
         for name, seq in fullLengthSeqs.items():
-            self.seqs[name] = (len(seq), counter)
+            self.lengths.append(float(len(seq)))
+            self.seqs[name] = counter
             self.observation_ids.append(name)
             counter += 1
 
@@ -79,7 +81,7 @@ class OTUTableGenerator(object):
 
     def __str__(self):
         version_str = 'amplishot %s' % __version__
-        return self.biom_table.getBiomFormatJsonString(generated_by=version_str)
+        return self.biom_table.getBiomFormatPrettyPrint(generated_by=version_str)
     
     def _make_bowtie_index(self, fullLengthSeqs):
         """ write the full-length sequences to file then index them with
@@ -104,27 +106,20 @@ class OTUTableGenerator(object):
         alias: name to give this file in the OTU table,  default is to take the
         basename of the reads file minus the extension
         """
-        tmp = tempfile.TemporaryFile()
-        stdout, stderr = self._make_sam(reads)
-        tmp.write(stdout)
-        tmp.seek(0)
-        tmp_fpkc = self._parse_sam(tmp)
         if alias is None:
             alias = os.path.splitext(os.path.basename(reads))[0]
         self.aliases.append(alias)
 
-        # check to see if we need to append on a new column to the 2D-array
-        if len(self.aliases) > self.fpkc.shape[1]:
-            self.fpkc = np.append(self.fpkc, tmp_fpkc, 1)
-
-    def normalize(self):
-        pass
+        tmp = tempfile.TemporaryFile()
+        stdout, stderr = self._make_sam(reads)
+        tmp.write(stdout)
+        tmp.seek(0)
+        self._parse_sam(tmp)
 
     def generate_biom_table(self, sample_metadata=None, observation_metadata=None):
         # trim the array if needed
         if len(self.aliases) < self.fpkc.shape[1]:
             self.fpkc = self.fpkc[:,0:len(self.aliases)]
-
         self.biom_table = biom.table.table_factory(self.fpkc, self.aliases,
                 self.observation_ids, sample_metadata=sample_metadata,
                 observation_metadata=observation_metadata)
@@ -146,33 +141,32 @@ class OTUTableGenerator(object):
         """ count the number of reads that map to a full length sequence
         taking into account for dud reads that need to be filtered
         """
-        tmp_counts = dict()
+        # check to see if we need to append on a new column to the 2D-array
+        if len(self.aliases) > self.fpkc.shape[1]:
+            self.fpkc = np.append(self.fpkc, np.zeros(self.fpkc.shape(0)), 1)
+
         samfile = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
         for read in samfile.parse():
             if not read.is_unmapped() and read.percent_identity() >= percentId:
-                try:
-                    tmp_counts[read.rname] += 1
-                except KeyError:
-                    tmp_counts[read.rname] = 1
+               row = self.seqs[read.rname]
+               column = len(self.aliases) - 1
+               self.fpkc[row,column] += 1.0
 
-        return self._get_fpkc(tmp_counts)
+        return self._get_fpkc()
 
 
-    def _get_fpkc(self, counts):
+    def _get_fpkc(self):
         """ Calculate the fragments mapped per kilobase contig length (fpkc),
         which will be used as our abundance measurement
         """
-        tmp = [0.0] * len(self.seqs)
-        for name in counts.keys():
-            fpkc = float(counts[name] * 1000) / float(self.seqs[name][0])
-            tmp[self.seqs[name][1]] = fpkc
-        return tmp
+        for index, value in np.ndenumerate(self.fpkc):
+            self.fpkc[index] = value * 1000.0 / self.lengths[index[0]]
 
-    def _normalize_fpkc(self):
+    def normalize(self):
         """ Scale the fpkc values based on the total number of reads that
         mapped in the sam files
         """
-        pass
+        self.biom_table = self.biom_table.normObservationBySample()
 
 
 def pick_otus(inputSeqsFilepath, otuPickingMethod='cdhit', similarity=0.98,

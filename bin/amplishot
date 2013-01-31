@@ -157,10 +157,12 @@ def pipeline(args):
 
     # map overlapped fragments with bowtie
     print 'mapping with bowtie...'
-    sams = []
     # create the file for all the full-length seqs
     full_length_seqs =\
     open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')
+
+    # taxonomy assigner
+    taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
 
     for readfile in args.file:
         print 'processing %s...' % readfile
@@ -177,17 +179,19 @@ def pipeline(args):
 
         # partition dataset based on mapped reads
         print '\tpartitioning...'
-        good_taxons, bad_taxons = taxon_partition(tmp_samfile, args.taxonomy,
-                rootdir=taxon_root)
+        taxseg.parse_sam(tmp_samfile)
+        good_taxons, bad_taxons = taxseg.segregate(root=taxon_root)
+        taxseg.clear()
+
         if len(good_taxons) < 1:
             print "\tNo taxons for assembly"
         else:
             print '\tThere are %i taxons suitable for assembly'\
                     ' and %i taxons with incomplete coverage'\
                     % (len(good_taxons), len(bad_taxons))
-            good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
+            good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
             
-            # dataset reduction - cd-hit - each partition - threaded
+            # dataset reduction - cd-hit - each partition
             print '\tclustering...'
             for t in good_taxons:
                 cd_hit_reduce(t, infile='reads.fa')
@@ -196,7 +200,7 @@ def pipeline(args):
             for t in good_taxons:
                 process_cd_hit_results(t, cdhitin='reads.fa')
 
-            ## generate overlaps - phrap - each partition - threaded
+            ## generate overlaps - phrap - each partition
             full_length_counter = 1
             for t in good_taxons:
                 stdout, stderr, results = phrap_assemble(t)

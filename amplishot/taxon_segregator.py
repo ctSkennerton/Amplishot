@@ -212,6 +212,13 @@ class TaxonSegregator(object):
             qual.write('>%s\n%s\n' %(name, quality))
 
 
+    def clear(self):
+        """ Delete all of the reads from the taxonomy hash
+        """
+        for key in self.taxon_mapping.keys():
+            del self.taxon_mapping[key][:]
+        self.done_segregation = False
+
     def parse_sam(self, sam, percentId = 0.98):
         """iterate through the records in a samfile and place them into 
            one of the taxonomies based on the mapping
@@ -227,7 +234,10 @@ class TaxonSegregator(object):
             if not read.is_unmapped():
                 if read.percent_identity() >= percentId:
                     t = self.ref_taxon_mapping[read.rname]
-                    self.taxon_mapping[t].append(read)
+                    try:
+                        self.taxon_mapping[t].append(read)
+                    except KeyError:
+                        self.taxon_mapping[t] = [read]
                 else:
                     try:
                         self.taxon_mapping[tuple()].append(read)

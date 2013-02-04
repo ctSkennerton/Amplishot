@@ -43,17 +43,7 @@ from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy
 from amplishot.app import bowtie, phrap, pandaseq
-
 ###############################################################################
-###############################################################################
-###############################################################################
-###############################################################################
-
-###############################################################################
-###############################################################################
-###############################################################################
-###############################################################################
-
 
 def map_to_reference(stderr=False, stdout=True, **kwargs):
     """Take overlapped reads from pandaseq and map them to reference sequences
@@ -138,11 +128,12 @@ def pipeline(args):
     """Run all the steps of amplishot
     """
     root_dir = args.outdir
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir)
     # generate fragment consensus sequences - pandaseq
     #panda_out = panda(args)
 
     # map overlapped fragments with bowtie
-    print 'mapping with bowtie...'
     # create the file for all the full-length seqs
     full_length_seqs =\
     open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')

@@ -31,7 +31,7 @@ __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
-
+import logging
 import argparse
 import sys
 import tempfile
@@ -62,14 +62,8 @@ def map_to_reference(stderr=False, stdout=True, **kwargs):
        bowtiedb: path to fileprefix of the bowtie database
     """
     b = amplishot.app.bowtie.Bowtie(**kwargs)
-    print b
+    logging.info(str(b))
     return b(stderr=stderr, stdout=stdout)
-    #sam = tempfile.NamedTemporaryFile(suffix='.sam', delete=False)
-    #with open(os.devnull, 'w') as fnull:
-    #    subprocess.call(['bowtie2', '-U', inreads, '-x', bowtiedb, '-p',
-    #        str(threads)], stdout = sam, stderr = fnull)
-    #sam.close()
-
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     """Call the taxon segregator and return a list of tuples of taxonomies that
@@ -110,19 +104,11 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
 def phrap_assemble(workingdir, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True, minscore=300):
     p = amplishot.app.phrap.Phrap(infile=infile, minscore=minscore)
-    print p
+    logging.info('%s (wd: %s)', str(p), workingdir)
     stdout, stderr = p(stdout=suppressStdout, stderr=suppressStderr,
            cwd=workingdir)
 
     return stdout, stderr, p.get_result_paths(cwd=workingdir)
-    #out = None
-    #err = None
-    #if suppressStdout:
-    #    out = open(os.devnull, "w")
-    #if suppressStderr:
-    #    err = open(os.devnull, "w")
-    #return subprocess.call(['phrap', infile, '-minscore','300'],
-    #        stderr=err, stdout=out, cwd=workingdir)
 
 def demultiplex(args):
     pass
@@ -165,7 +151,7 @@ def pipeline(args):
     taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
 
     for readfile in args.file:
-        print 'processing %s...' % readfile
+        logging.info('processing %s...', readfile)
         tmp_samfile = tempfile.TemporaryFile()
         bowtie_stdout, bowtie_stderror = map_to_reference( U=readfile,
                 index=args.bowtiedb, threads=args.threads, )
@@ -178,32 +164,33 @@ def pipeline(args):
             sample_file_name, 'root')
 
         # partition dataset based on mapped reads
-        print '\tpartitioning...'
-        taxseg.parse_sam(tmp_samfile)
+        logging.info('partitioning...')
+        taxseg.parse_sam(tmp_samfile )
         good_taxons, bad_taxons = taxseg.segregate(root=taxon_root)
         taxseg.clear()
 
         if len(good_taxons) < 1:
-            print "\tNo taxons for assembly"
+            logging.info("No taxons for assembly")
         else:
-            print '\tThere are %i taxons suitable for assembly'\
-                    ' and %i taxons with incomplete coverage'\
-                    % (len(good_taxons), len(bad_taxons))
+            logging.info('There are %i taxons suitable for assembly'\
+                    ' and %i taxons with incomplete coverage',
+                    len(good_taxons), len(bad_taxons))
             good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
             
             # dataset reduction - cd-hit - each partition
-            print '\tclustering...'
+            logging.info('clustering...')
             for t in good_taxons:
                 cd_hit_reduce(t, infile='reads.fa')
             
-            print '\tassembling...'
+            logging.info('assembling...')
             for t in good_taxons:
                 process_cd_hit_results(t, cdhitin='reads.fa')
 
             ## generate overlaps - phrap - each partition
             full_length_counter = 1
             for t in good_taxons:
-                stdout, stderr, results = phrap_assemble(t)
+                stdout, stderr, results = phrap_assemble(t,
+                        minscore=args.phrap_minscore)
                 # collect all full-length sequences
                 with open(results['contigs']) as fp:
                     fxparser = amplishot.parse.fastx.FastxReader(fp)
@@ -277,6 +264,14 @@ if __name__ == '__main__':
     common_options_parser.add_argument('--supress-config-file',
     action='store_true', default=False, help='Do not use any values stored in\
             the config file')
+    common_options_parser.add_argument('--quiet', dest='logger_quiet',
+            action='store_const', const='CRITICAL', help='change the log verbosity so that only'\
+                    'the most critical messages are reported')
+    common_options_parser.add_argument('--log-level', choices=['DEBUG', 'INFO',
+        'WARNING', 'ERROR', 'CRITICAL'], dest='logger_level', default='INFO',
+        help='Set the log level')
+    common_options_parser.add_argument('--log-file', dest='logger_file',
+            help='Change the destination of logging. (default: sys.stderr)')
 
 #--------------------
     # create a threads parser specifically to hold that option, then we can
@@ -463,8 +458,27 @@ if __name__ == '__main__':
     assembly_parser.add_argument('file', nargs='+',
             help='Path to files containing taxonomies for assembly')
     assembly_parser.set_defaults(func=assemble)
-
+    
+    
     args = parser.parse_args()
+    
+    # set up the logger
+    log_level = ''
+    if args.logger_quiet is not None:
+        log_level = args.logger_quiet
+    else:
+        log_level = args.logger_level
+
+    numeric_level = getattr(logging, log_level, None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % log_level)
+
+    logging.basicConfig(level=numeric_level,
+            format='%(levelname)s\t%(asctime)s\t%(message)s')
+    
+    if args.logger_file is not None:
+        logging.basicConfig(filename=args.logger_file)
+
     args.func(args)
 
 

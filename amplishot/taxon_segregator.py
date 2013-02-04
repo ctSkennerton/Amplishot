@@ -31,7 +31,7 @@ __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
-
+import logging
 import sys
 import os
 import re
@@ -169,7 +169,7 @@ class TaxonSegregator(object):
            minCoverage: the minimum coverage allowed for the covered positions
         """
         #assume that the sequences are not greater than 1600bp
-        coverage = [0]*1600
+        coverage = [0]*5000
         
         for read in self.taxon_mapping[taxon]:
             for i in range(read.pos, read.pos + read.qlen):
@@ -231,18 +231,12 @@ class TaxonSegregator(object):
             parse all samfiles at one and then call segregate at the end'
         samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
         for read in samf.parse():
-            if not read.is_unmapped():
-                if read.percent_identity() >= percentId:
-                    t = self.ref_taxon_mapping[read.rname]
-                    try:
-                        self.taxon_mapping[t].append(read)
-                    except KeyError:
-                        self.taxon_mapping[t] = [read]
-                else:
-                    try:
-                        self.taxon_mapping[tuple()].append(read)
-                    except KeyError:
-                        self.taxon_mapping[tuple()] = [read]
+            if not read.is_unmapped() and read.percent_identity() >= percentId:
+                t = self.ref_taxon_mapping[read.rname]
+                try:
+                    self.taxon_mapping[t].append(read)
+                except KeyError:
+                    self.taxon_mapping[t] = [read]
             else:
                 try:
                     self.taxon_mapping[tuple()].append(read)

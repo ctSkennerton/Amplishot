@@ -202,9 +202,11 @@ def pipeline(args):
         for name, seq, qual in fxparser.parse():
             rep_set_seqs[name] = seq
 
+    logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
+    
     #assign taxonomy
     taxon_mapper = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
-    with open('full_length_alignments.sam', 'w+b') as fp:
+    with open(os.path.join(root_dir, 'full_length_alignments.sam'), 'w+b') as fp:
         sam_alignments, bowtie_error = map_to_reference(U=rep_set,
                 index=args.bowtiedb, threads=args.threads, fasta=True)
         fp.write(sam_alignments)
@@ -230,11 +232,11 @@ def pipeline(args):
     
     abundance.generate_biom_table()
     abundance.add_metadata(observation_metadata=observation_metadata)
-    with open('abundances.biom', 'w') as fp:
+    with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
         fp.write(str(abundance))
 
     abundance.normalize()
-    with open('abundances.normalized.biom', 'w') as fp:
+    with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
         fp.write(str(abundance))
 
 ###############################################################################

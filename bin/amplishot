@@ -43,6 +43,8 @@ from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy
 from amplishot.app import bowtie, phrap, pandaseq
+from cogent.app.cd_hit import CD_HIT_EST
+
 ###############################################################################
 
 def map_to_reference(stderr=False, stdout=True, **kwargs):
@@ -65,13 +67,19 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
 
 
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
-    proc = subprocess.Popen(["cd-hit-est","-c","0.98", "-M", "1000","-o",
-                os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    #proc = subprocess.Popen(["cd-hit-est","-c","0.98", "-M", "1000","-o",
+    #            os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)],
+    #        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    stdout, stderr = proc.communicate()
-    return_value = proc.returncode
-    return stdout, stderr, return_value
+    #stdout, stderr = proc.communicate()
+    #return_value = proc.returncode
+    #return stdout, stderr, return_value
+    cdhit = CD_HIT_EST(WorkingDir=workingdir)
+    cdhit.Parameters['-i'].on(infile)
+    cdhit.Parameters['-o'].on(outfile)
+    cdhit.Parameters['-c'].on(0.98)
+    cdhit.Parameters['-M'].on(1000)
+    cdhit()
 
 
 def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
@@ -94,7 +102,7 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
 def phrap_assemble(workingdir, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True, minscore=300):
     p = amplishot.app.phrap.Phrap(infile=infile, minscore=minscore)
-    logging.info('%s (wd: %s)', str(p), workingdir)
+    logging.debug('%s (wd: %s)', str(p), workingdir)
     stdout, stderr = p(stdout=suppressStdout, stderr=suppressStderr,
            cwd=workingdir)
 
@@ -193,7 +201,7 @@ def pipeline(args):
     # pick OTUs and representative set
     out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
             outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
-            similarity=0.99)
+            similarity=args.otu_similarity)
     rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
             outputFilePath=os.path.join(root_dir, 'full_length_rep_set.fa'))
     rep_set_seqs = dict()
@@ -219,9 +227,14 @@ def pipeline(args):
         amplishot.assign_taxonomy.greengenes_format(taxon)
         for otu in otu_representatives:
             observation_metadata[otu.qname]['taxonomy'] = gg_tax
-            observation_metadata[otu.qname]['percent identity'] =\
-            otu.percent_identity()
+            if otu.is_unmapped():
+                observation_metadata[otu.qname]['percent identity'] = 0.0
+            else:
+                observation_metadata[otu.qname]['percent identity'] =\
+                otu.percent_identity()
             observation_metadata[otu.qname]['cigar'] = otu.cigar
+
+    logging.info('generating OTU table in biom format...')
     
     # create Bowtie database from representative set
     abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
@@ -317,6 +330,13 @@ if __name__ == '__main__':
     pipeline_parser.add_argument('-o', '--output-directory',dest='outdir', default='.',
             help='Root directoy under which all files and folders from the\
             pipeline will be generated from')
+    pipeline_parser.add_argument('-m', '--minscore', dest='phrap_minscore',
+            type=int, default=300, help='The minimum alignment score used in\
+            the phrap assembly')
+    pipeline_parser.add_argument('-s', '--similarity', type=float,
+            dest='otu_similarity', default=0.97, help='The similarity'\
+                    ' required between sequences AFTER reconstruction'\
+                    ' for OTU clustering')
     pipeline_parser.add_argument('file',nargs='+',
             help='Input files containing read pairs')
     pipeline_parser.set_defaults(func=pipeline)

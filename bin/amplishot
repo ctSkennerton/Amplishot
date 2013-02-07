@@ -39,10 +39,12 @@ import os
 import shutil
 import subprocess
 import textwrap
+import gzip
 from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy
-from amplishot.app import bowtie, phrap, pandaseq
+from amplishot.app import bowtie, phrap, pandaseq_pycogent
+from amplishot.config import AmplishotConfig
 from cogent.app.cd_hit import CD_HIT_EST
 
 ###############################################################################
@@ -66,19 +68,12 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     return taxseg.segregate(root=rootdir)
 
 
-def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa'):
-    #proc = subprocess.Popen(["cd-hit-est","-c","0.98", "-M", "1000","-o",
-    #            os.path.join(workingdir,outfile),"-i",os.path.join(workingdir,infile)],
-    #        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    #stdout, stderr = proc.communicate()
-    #return_value = proc.returncode
-    #return stdout, stderr, return_value
+def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa', similarity=0.98, maxMemory=1000):
     cdhit = CD_HIT_EST(WorkingDir=workingdir)
     cdhit.Parameters['-i'].on(infile)
     cdhit.Parameters['-o'].on(outfile)
-    cdhit.Parameters['-c'].on(0.98)
-    cdhit.Parameters['-M'].on(1000)
+    cdhit.Parameters['-c'].on(similarity)
+    cdhit.Parameters['-M'].on(maxMemory)
     cdhit()
 
 
@@ -114,10 +109,14 @@ def assemble(args):
     pass
 
 
-def overlap(args):
-    panda = pandaseq.Pandaseq(overlap=args.overlap, minlength=args.minlength)
-    stdout, stderr = panda()
-    return stdout, stderr
+def overlap(forward, reverse, minPairtigLen=350, minOverlap=30):
+    panda = pandaseq_pycogent.Pandaseq()
+    panda.Parameters['-f'].on(forward)
+    panda.Parameters['-r'].on(reverse)
+    panda.Parameters['-l'].on(minPairtigLen)
+    panda.Parameters['-o'].on(minOverlap)
+    panda.Parameters['-F'].on()
+    return panda()
 
 
 def map_reads(args):
@@ -132,40 +131,70 @@ def filter_sam(args):
     
 
 def cluster(args): pass
-def pipeline(args):
+def pipeline(config):
     """Run all the steps of amplishot
     """
-    root_dir = args.outdir
+    root_dir = config.data['output_directory']
     if not os.path.exists(root_dir):
         os.makedirs(root_dir)
+
     # generate fragment consensus sequences - pandaseq
-    #panda_out = panda(args)
+    pairtig_dir = os.path.join(root_dir, 'pairtigs')
+    if not os.path.exists(pairtig_dir):
+        os.mkdir(pairtig_dir)
+
+    for forward, reverse in config.data['input_raw_reads']:
+        #forward = config.data['input_raw_reads'][i][0]
+        #reverse = config.data['input_raw_reads'][i][1]
+        panda_out = overlap(forward, reverse,
+                config.data['minimum_pairtig_length'],
+                config.data['pair_overlap_length'])
+        pairtig_file = os.path.join(pairtig_dir,
+            os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq.gz')
+        with gzip.open(pairtig_file, 'wb') as fp:
+            for line in panda_out['StdOut']:
+                fp.write(line)
+        config.data['pairtig_read_files'].append(pairtig_file)
 
     # map overlapped fragments with bowtie
     # create the file for all the full-length seqs
     full_length_seqs =\
-    open(os.path.join(root_dir, 'combined_samples.full_length.fa'), 'w')
+    open(os.path.join(root_dir, 
+        config.data.get('reconstruced_seq_file', 'full_length_sequences.fa')), 'w')
 
     # taxonomy assigner
-    taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
-
-    for readfile in args.file:
+    taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'])
+    
+    # fix up the aliases
+    indata = []
+    if config.data['aliases']:
+        indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
+    else:
+        logging.debug(config.data['pairtig_read_files'])
+        for readfile in config.data['pairtig_read_files']:
+            print readfile
+            sample_file_name =\
+            os.path.splitext(os.path.basename(readfile))[0]
+            indata.append((readfile, sample_file_name))
+    
+    for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
         tmp_samfile = tempfile.TemporaryFile()
         bowtie_stdout, bowtie_stderror = map_to_reference( U=readfile,
-                index=args.bowtiedb, threads=args.threads, )
+                index=config.data['mapper_database'], 
+                threads=config.data['threads'] )
         tmp_samfile.write(bowtie_stdout)
         # go back to the start of the file
         tmp_samfile.seek(0)
-        sample_file_name =\
-        os.path.splitext(os.path.basename(readfile))[0]
-        taxon_root = os.path.join(args.outdir,
-            sample_file_name, 'root')
+        sample_file_name = samplename
 
         # partition dataset based on mapped reads
         logging.info('partitioning...')
+        taxon_root = os.path.join(root_dir, sample_file_name, 'root')
         taxseg.parse_sam(tmp_samfile )
-        good_taxons, bad_taxons = taxseg.segregate(root=taxon_root)
+        good_taxons, bad_taxons = taxseg.segregate(root=taxon_root, 
+                minCount=config.data['taxon_coverage'][1], 
+                minCoverage=config.data['taxon_coverage'][0])
         taxseg.clear()
 
         if len(good_taxons) < 1:
@@ -174,12 +203,17 @@ def pipeline(args):
             logging.info('There are %i taxons suitable for assembly'\
                     ' and %i taxons with incomplete coverage',
                     len(good_taxons), len(bad_taxons))
-            good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
+            if config.data['assemble_unknowns']:
+                good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
+            else:
+                good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
             
             # dataset reduction - cd-hit - each partition
             logging.info('clustering...')
             for t in good_taxons:
-                cd_hit_reduce(t, infile='reads.fa')
+                cd_hit_reduce(t, infile='reads.fa', 
+                    similarity=config.data['read_clustering_similarity'],
+                    maxMemory=config.data['cdhit_max_memory'])
             
             logging.info('assembling...')
             for t in good_taxons:
@@ -189,11 +223,12 @@ def pipeline(args):
             full_length_counter = 1
             for t in good_taxons:
                 stdout, stderr, results = phrap_assemble(t,
-                        minscore=args.phrap_minscore)
+                        minscore=config.data['phrap_minscore'])
                 # collect all full-length sequences
                 with open(results['contigs']) as fp:
                     fxparser = amplishot.parse.fastx.FastxReader(fp)
-                    for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, length=1000):
+                    for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
+                    length=config.data['minimum_reconstruction_length']):
                         full_length_seqs.write('>%s_%i\n%s\n' % (sample_file_name, full_length_counter, seq))
                         full_length_counter += 1
 
@@ -201,9 +236,9 @@ def pipeline(args):
     # pick OTUs and representative set
     out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
             outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
-            similarity=args.otu_similarity)
+            similarity=config.data['otu_clustering_similarity'])
     rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
-            outputFilePath=os.path.join(root_dir, 'full_length_rep_set.fa'))
+            outputFilePath=os.path.join(root_dir, config.data['repset_output_file']))
     rep_set_seqs = dict()
     with open(rep_set) as fp:
         fxparser = amplishot.parse.fastx.FastxReader(fp)
@@ -213,13 +248,13 @@ def pipeline(args):
     logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
     
     #assign taxonomy
-    taxon_mapper = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
+    taxon_mapper = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'])
     with open(os.path.join(root_dir, 'full_length_alignments.sam'), 'w+b') as fp:
         sam_alignments, bowtie_error = map_to_reference(U=rep_set,
-                index=args.bowtiedb, threads=args.threads, fasta=True)
+                index=config.data['mapper_database'], threads=config.data['threads'], fasta=True)
         fp.write(sam_alignments)
         fp.seek(0)
-        taxon_mapper.parse_sam(fp, percentId=0.90)
+        taxon_mapper.parse_sam(fp, percentId=config.data['minimum_taxon_similarity'])
 
     observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
     for taxon, otu_representatives in taxon_mapper.taxon_mapping.items():
@@ -240,17 +275,18 @@ def pipeline(args):
     abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
             root_dir)
     #generate abundance based on coverage and create OTU table
-    for read_file in args.file:
-        abundance.generate_abundance(read_file)
+    for read_file, sample_name in indata:
+        abundance.generate_abundance(read_file, alias=sample_name)
     
     abundance.generate_biom_table()
     abundance.add_metadata(observation_metadata=observation_metadata)
     with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
         fp.write(str(abundance))
-
-    abundance.normalize()
-    with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
-        fp.write(str(abundance))
+    
+    if config.data['normalize_otu_table']:
+        abundance.normalize()
+        with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
+            fp.write(str(abundance))
 
 ###############################################################################
 ###############################################################################
@@ -258,34 +294,34 @@ def pipeline(args):
 ###############################################################################
 
 if __name__ == '__main__':
-   
+#-------------------
+    # initialise the config parser
+    config = AmplishotConfig()
+
 #--------------------
     #place options that will be used for all subparsers here
     common_options_parser = argparse.ArgumentParser(add_help=False)
     common_options_parser.add_argument('-c', '--config-file', dest='config',
-            default=os.path.join(os.path.expanduser('~'),'.amplishot_config.yml'),
+            #default=os.path.join(os.path.expanduser('~'),'.amplishot_config.yml'),
             help='specify a custom location to the amplishot configuration\
             file. By default all values stored in the config file will\
-            be used unless they are overwritten by command-line options\
-            or if the --suppress-config-file option is set')
-    common_options_parser.add_argument('--supress-config-file',
-    action='store_true', default=False, help='Do not use any values stored in\
-            the config file')
+            be used unless they are overwritten by command-line options')
     common_options_parser.add_argument('--quiet', dest='logger_quiet',
             action='store_const', const='CRITICAL', help='change the log verbosity so that only'\
                     'the most critical messages are reported')
     common_options_parser.add_argument('--log-level', choices=['DEBUG', 'INFO',
-        'WARNING', 'ERROR', 'CRITICAL'], dest='logger_level', default='INFO',
+        'WARNING', 'ERROR', 'CRITICAL'], dest='log_level',
+        default=config.data.get('log_level', 'INFO'),
         help='Set the log level')
-    common_options_parser.add_argument('--log-file', dest='logger_file',
-            help='Change the destination of logging. (default: sys.stderr)')
+    common_options_parser.add_argument('--log-file', dest='log_file',
+            help='Change the destination of logging.')
 
 #--------------------
     # create a threads parser specifically to hold that option, then we can
     # pass it to the parsers that need it
     threads_parser = argparse.ArgumentParser(add_help=False)
     threads_parser.add_argument('-t', '--threads', type=int, dest='threads',
-            default=1, help='The number of threads to use')
+            default=config.data.get('threads', 1), help='The number of threads to use')
 
 #--------------------
     # top level parser for running the pipeline
@@ -321,24 +357,38 @@ if __name__ == '__main__':
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser, threads_parser]
             )
-    pipeline_parser.add_argument('-T','--taxonomy', required=True, dest='taxonomy', help="File\
+    pipeline_parser.add_argument('-T','--taxonomy', required=True,
+    dest='taxonomy_file', help="File\
             containing the taxonomy mapping of the reference sequences in the\
                     bowtie database")
-    pipeline_parser.add_argument('-d', '--bowtie-database', required=True, dest='bowtiedb', help="the\
+    pipeline_parser.add_argument('-d', '--bowtie-database', required=True,
+    dest='mapper_database', help="the\
             path to the bowtie database, without the suffixes; just like you\
             would write when using bowtie")
-    pipeline_parser.add_argument('-o', '--output-directory',dest='outdir', default='.',
+    pipeline_parser.add_argument('-o',
+            '--output-directory',dest='output_directory',
+            default=config.data.get('output_directory', os.getcwd()),
             help='Root directoy under which all files and folders from the\
             pipeline will be generated from')
     pipeline_parser.add_argument('-m', '--minscore', dest='phrap_minscore',
-            type=int, default=300, help='The minimum alignment score used in\
+            type=int, default=config.data.get('phrap_minscore', 300), 
+            help='The minimum alignment score used in\
             the phrap assembly')
     pipeline_parser.add_argument('-s', '--similarity', type=float,
-            dest='otu_similarity', default=0.97, help='The similarity'\
+            dest='otu_clustering_similarity',
+            default=config.data.get('otu_clustering_similarity', 0.97), help='The similarity'\
                     ' required between sequences AFTER reconstruction'\
                     ' for OTU clustering')
-    pipeline_parser.add_argument('file',nargs='+',
-            help='Input files containing read pairs')
+    pipeline_parser.add_argument('-i', '--input', nargs=2, action='append',
+            required=True, help='paths to first and pecond pairs of reads for \'pairtig\'\
+            generation.  Can be specified multiple times for many samples',
+            dest='input_raw_reads')
+    pipeline_parser.add_argument('-l', '--min-length', default=config.data.get('minimum_pairtig_length', 350),
+            dest='minimum_pairtig_length', help='The minimal acceptable length for\
+            assembled pairs')
+    pipeline_parser.add_argument('-O', '--overlap-length', default=config.data.get('pair_overlap_length', 30),
+            dest='pair_overlap_length', 
+            help='the minimum length that pairs must overlap by')
     pipeline_parser.set_defaults(func=pipeline)
 
 
@@ -346,27 +396,28 @@ if __name__ == '__main__':
 #--------------------
     # demultiplexing parser
     # amplishot demultiplex [OPTIONS] {<file1> <file2>}...
-    demultiplex_parser = subparser.add_parser('demultiplex', 
-            help='Split datasets based on user defined barcode sequences', 
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser]
-            )
-    demultiplex_parser.add_argument('-o', '--output-directory', default='.', dest='outdir',
-            help='Specify an output directory for demutiplexed files')
-    demultiplex_parser.add_argument('-b', '--barcode-mapping', dest='barcodes',
-            required=True, help="""A file containing barcodes to search for.
-            The file must be tab separated with each barcode on a single line.
-            The first column should be an identifier for the barcode, the
-            second column should be the sequence of the barcode.  If the read 
-            pair is dual barcoded then a third column can be
-            specified as the barcode for the reverse read.  Note that both
-            barcodes should be in the correct orientation for their read (i.e.
-            the second barcode should be reversed complemented)
-            """)
-    demultiplex_parser.add_argument('file', nargs='+', 
-            help='Input file(s) that need to be demultiplexed they may be\
-                    in fasta, fastq and be gziped')
-    demultiplex_parser.set_defaults(func=demultiplex)
+    #demultiplex_parser = subparser.add_parser('demultiplex', 
+    #        help='Split datasets based on user defined barcode sequences', 
+    #        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    #        parents=[common_options_parser]
+    #        )
+    #demultiplex_parser.add_argument('-o', '--output-directory', 
+    #        default=config.data.get('output_directory', os.getcwd()), dest='output_directory',
+    #        help='Specify an output directory for demutiplexed files')
+    #demultiplex_parser.add_argument('-b', '--barcode-mapping', dest='barcodes',
+    #        required=True, help="""A file containing barcodes to search for.
+    #        The file must be tab separated with each barcode on a single line.
+    #        The first column should be an identifier for the barcode, the
+    #        second column should be the sequence of the barcode.  If the read 
+    #        pair is dual barcoded then a third column can be
+    #        specified as the barcode for the reverse read.  Note that both
+    #        barcodes should be in the correct orientation for their read (i.e.
+    #        the second barcode should be reversed complemented)
+    #        """)
+    #demultiplex_parser.add_argument('file', nargs='+', 
+    #        help='Input file(s) that need to be demultiplexed they may be\
+    #                in fasta, fastq and be gziped')
+    #demultiplex_parser.set_defaults(func=demultiplex)
 
 #--------------------
     # overlap parser
@@ -376,18 +427,19 @@ if __name__ == '__main__':
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser, threads_parser]
             )
+    overlap_parser.add_argument('-i', '--input', nargs=2, action='append',
+            help='paths to first and pecond pairs of reads for \'pairtig\'\
+            generation.  Can be specified multiple times for many samples',
+            dest='input_raw_reads')
     overlap_parser.add_argument('-o', '--output-directory',
-            default='./overlapped', dest='outdir', 
+            default=config.data.get('output_directory', os.getcwd()), dest='output_directory', 
             help='Output directory for the consensus fragments')
-    overlap_parser.add_argument('-l', '--min-length', default=350,
-            dest='minlength', help='The minimal acceptable length for\
+    overlap_parser.add_argument('-l', '--min-length', default=config.data.get('minimum_pairtig_length', 350),
+            dest='minimum_pairtig_length', help='The minimal acceptable length for\
             assembled pairs')
-    overlap_parser.add_argument('-O', '--overlap-length', default=30,
-            dest='overlap', 
+    overlap_parser.add_argument('-O', '--overlap-length', default=config.data.get('pair_overlap_length', 30),
+            dest='pair_overlap_length', 
             help='the minimum length that pairs must overlap by')
-    overlap_parser.add_argument('file', nargs='+',
-            help='Input must be pairs of files that contain the forward\
-            and reverse reads for assembly into consensus fragments')
     overlap_parser.set_defaults(func=overlap)
 
 #--------------------
@@ -398,13 +450,19 @@ if __name__ == '__main__':
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser, threads_parser]
             )
-    map_parser.add_argument('-x', '--index', dest='db', required=True,
-            help='Path to the index file conatining the 16S database.\
-            Must be in bowtie2 format')
-    map_parser.add_argument('-o', '--out-sam', dest='sam', required=True,
-            help='output file in sam format for alignments')
-    map_parser.add_argument('file', nargs='+',
-            help='input files containing assembled fragments')
+    map_parser.add_argument('-i', '--input-reads', dest='pairtig_read_files',
+            action='append', help='path to file containing \'pairtigs\'.  Can\
+            be specified multiple times for multiple samples')
+    map_parser.add_argument('-a', '--alias', dest='aliases', help='specify\
+            an alias for the input file to give it a different name in the\
+            resulting analyses')
+    map_parser.add_argument('-x', '--index', dest='mapper_database',
+            required=True, help='Path to the index file conatining'\
+                    'the 16S database. Must be in bowtie2 format')
+    map_parser.add_argument('-o', '--output-directory', dest='directory', 
+            default=config.data.get('output_directory', os.getcwd()),
+            help='Root directoy under which all files and folders from the\
+            pipeline will be generated from')
     map_parser.set_defaults(func=map_reads)
 
 #--------------------
@@ -416,46 +474,46 @@ if __name__ == '__main__':
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser]
             )
-    filter_parser.add_argument('-o', '--output-directory', dest='outdir',
-            default='.', help='output directory prefix')
+    filter_parser.add_argument('-o', '--output-directory',
+            dest='filter_output_directory_prefix',
+            default=config.data.get('output_directory', os.getcwd()), 
+            help='output directory prefix')
     filter_parser.add_argument('-T', '--taxonomy-file', required=True,
-            dest='taxonomy', help='A mapping file in either Greengenes or\
+            dest='taxonomy_file', help='A mapping file in either Greengenes or\
             SILVA format that maps the reference IDs to their taxonomies')
-    filter_parser.add_argument('-p', '--percent-id', type=float, default=0.98,
-            dest='percentid',
-            help='The global percentage Identity that a read must have to the\
+    filter_parser.add_argument('-p', '--percent-id', type=float, 
+            default=config.data.get('initial_mapping_similarity', 0.98),
+            dest='initial_mapping_similarity',
+            help='''The global percentage Identity that a read must have to the\
             reference sequence. A good rule of thumb is to set this value to\
             be 1% lower than the clustering percentage used on the reference\
-            database.')
-    filter_parser.add_argument('-C', '--taxon-depth', type=int, default=2,
-            dest='taxon_depth',
+            database.''')
+    filter_parser.add_argument('-C', '--taxon-coverage', nargs=2,
+            default=config.data.get('taxon_coverage', [2, 1000]), dest='taxon_coverage',
             help='After taxonomic filtering, this value dictates the minimum\
-            coverage for EVERY covered base in the references of that taxon\
-            must contain to be considered suitable for assembly')
-    filter_parser.add_argument('-m', '--minimum-bases', type=int, default=1000,
-            dest='taxon_width',
-            help='After taxonomic filtering, this value dictates the minimum\
-            number of bases that must have query bases mapping to them for\
-            the entire taxon')
-    filter_parser.add_argument('sam', nargs='+',
-            help='sam formatted files containing assembled fragments for\
-            taxonomic filtering')
+            coverage and minimum nuber of bases that must be covered in that taxon\
+            to be considered suitable for assembly.  Takes the form of two\
+            numbered list: the first number is the minimum coverage and the\
+            second number is the number of bases that need to be covered')
     filter_parser.set_defaults(func=filter_sam)
 
 #--------------------
     #clustering parser
     # amplishot cluster [OPTIONS] <file>...
-    cluster_parser = subparser.add_parser('cluster',
+    cluster_parser = subparser.add_parser('reduce',
             help='Remove redundant coverage in taxons.  Greating decreases\
             assembly time',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser]
             )
     cluster_parser.add_argument('-p', '--percent-identity', type=float,
-            default=0.98, dest='percentid',
+            default=config.data.get('read_clustering_similarity', 0.98), 
+            dest='read_clustering_similarity',
             help='The percent identity that two reads must have to be clustered')
-    cluster_parser.add_argument('file', nargs='+',
-            help='fasta files containing reads to be clustered')
+    cluster_parser.add_argument('-i', '--input-directory',
+            dest='output_directory', default=config.data.get('output_directory', os.getcwd()))
+    cluster_parser.add_argument('-m', '--cdhit-max-memory', default=config.data.get('cdhit_max_memory', 1000),
+            dest='cdhit_max_memory')
     cluster_parser.set_defaults(func=cluster)
 
 #--------------------
@@ -466,34 +524,35 @@ if __name__ == '__main__':
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             parents=[common_options_parser]
             )
-    assembly_parser.add_argument('-m', '--min-score', dest='minscore',
-            type=int, default=300,
+    assembly_parser.add_argument('-m', '--min-score', dest='phrap_minscore',
+            type=int, default=config.data.get('phrap_minscore', 300),
             help='The minimum alignment score used in phrap')
-    assembly_parser.add_argument('file', nargs='+',
-            help='Path to files containing taxonomies for assembly')
+    assembly_parser.add_argument('-i', '--input-directory',
+            dest='output_directory', help='The root directory\
+            containing the samples reads split by taxonomy',
+            default=config.data.get('output_directory', os.getcwd()))
     assembly_parser.set_defaults(func=assemble)
     
     
     args = parser.parse_args()
-    
-    # set up the logger
-    log_level = ''
-    if args.logger_quiet is not None:
-        log_level = args.logger_quiet
-    else:
-        log_level = args.logger_level
+    config.populate_from_commandline(args)
 
-    numeric_level = getattr(logging, log_level, None)
+#-------------------
+    # set up the logger
+    if args.logger_quiet is not None:
+        config.data['log_level'] = args.logger_quiet
+
+    numeric_level = getattr(logging, config.data['log_level'], None)
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % log_level)
 
     logging.basicConfig(level=numeric_level,
             format='%(levelname)s\t%(asctime)s\t%(message)s')
     
-    if args.logger_file is not None:
-        logging.basicConfig(filename=args.logger_file)
+    if config.data['log_file'] is not None:
+        logging.basicConfig(filename=config.data['log_file'])
 
-    args.func(args)
+    args.func(config)
 
 
 ###############################################################################

@@ -72,7 +72,7 @@ class RepeatedParameter(Parameter):
         return not self.isOn()
 
     def on(self, value):
-        if value in not None:
+        if value is not None:
             if isinstance(value, list) or isinstance(value, tuple):
                 if self.IsPath:
                     value = map(FilePath, value)
@@ -101,7 +101,7 @@ class ExtentedCommandLneApplication(CommandLineApplication):
     
     _positionals = []
 
-    def __init__(self, params=None, positionals=None InputHandler=None,
+    def __init__(self, params=None, positionals=None, InputHandler=None,
             SuppressStderr=None, SuppressStdout=None, WorkingDir=None,
             TmpDir='/tmp', TmpNameLen=20, HALT_EXEC=False,
             PrependPositionals=False):

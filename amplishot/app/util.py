@@ -32,12 +32,62 @@ __status__ = "Development"
 ###############################################################################
 import subprocess
 import os
+import tempfile
 
 from cogent.app.util import CommandLineApplication, ApplicationError
 from cogent.app.parameters import Parameter, FlagParameter, ValuedParameter,\
     MixedParameter, Parameters, _find_synonym, is_not_None, FilePath,\
     ParameterError
 
+class AmplishotCommandLineAppResult(dict):
+    """ Class for holding the result of a CommandLineApplication run
+        The difference is that StdOut and StdErr are not removed with __del__
+        but instead MUST be removed with cleanup()
+    """
+
+    def __init__(self,out,err,exit_status,result_paths):
+        """Initialization of CommandLineAppResult
+
+        out: a file handler to the file containing the stdout
+        err: a file handler to the file containing the stderr
+        exit_status: the exit status of the program, 0 if run ok, 1 else.
+        result_paths: dictionary containing ResultPath objects for each 
+            output file that could be written
+        """
+        
+        self['ExitStatus'] = exit_status
+        self['StdOut'] = out
+        self['StdErr'] = err
+       
+        self.file_keys = result_paths.keys()
+        for key,value in result_paths.items():
+            if value.IsWritten:
+                try:
+                    self[key] = open(value.Path)
+                except IOError:
+                    raise ApplicationError, 'Could not open %s' %value.Path
+            else:
+                self[key] = None
+
+    def cleanUp(self):
+        """ Delete files that are written by CommandLineApplication from disk
+            
+            WARNING: after cleanUp() you may still have access to part of 
+                your result data, but you should be aware that if the file
+                size exceeds the size of the buffer you will only have part 
+                of the file. To be safe, you should not use cleanUp() until 
+                you are done with the file or have copied it to a different 
+                location.
+        """
+        file_keys = self.file_keys
+        for item in file_keys:
+            if self[item] is not None:
+                self[item].close()
+                remove(self[item].name)
+
+        # remove input handler temp files
+        if hasattr(self, "_input_filename"): 
+            remove(self._input_filename)
 
 class RepeatedParameter(Parameter):
     """ A parameter with many occurances on the command line
@@ -91,7 +141,7 @@ class RepeatedParameter(Parameter):
         self.Value = None
 
 
-class ExtentedCommandLneApplication(CommandLineApplication):
+class ExtendedCommandLneApplication(CommandLineApplication):
     """ Class containing new parameters for dealing with positional arguments
         This class contains a new class variable for positional arguments that
         is a list of Parameters.  There is also a boolean flag which indicates
@@ -107,14 +157,15 @@ class ExtentedCommandLneApplication(CommandLineApplication):
             PrependPositionals=False):
         """ Set up the ExtendedCommandLineApplication
         """
-        super(ExtendedCommandLineApplication, self).__init__(params=params,
-                InputHandler=InputHandler, SuppressStderr=SuppressStderr,
-                TmpNameLen=TemNameLen, HALT_EXEC=HALT_EXEC)
         self.prependPositionals = PrependPositionals
         if positionals:
             self._postionals = positionals
 
-    def __call__(self, data=None, remove_tmp=True):
+        super(ExtendedCommandLneApplication, self).__init__(params=params,
+                InputHandler=InputHandler, SuppressStderr=SuppressStderr,
+                TmpNameLen=TmpNameLen, HALT_EXEC=HALT_EXEC)
+
+    def __call__(self, data=None, remove_tmp=True, stdout=None, stderr=None):
         """Run the application with the specified kwargs on data
         
             data: anything that can be cast into a string or written out to
@@ -125,19 +176,30 @@ class ExtentedCommandLneApplication(CommandLineApplication):
                 you want your application to accept
 
             remove_tmp: if True, removes tmp files
+            stdout: A python file object to write stdout out to.  If None and
+                SuppressStdout is False and tmp file will be created
+            stderr: A python file object to write stderr out to. If None and
+                SuppressStderr is False a tmp file will be created
         """
         input_handler = self.InputHandler
         suppress_stdout = self.SuppressStdout
         suppress_stderr = self.SuppressStderr
-        out = os.devnull
-        err = os.devnull
-        if not suppress_stdout:
-            out = str(FilePath(self.getTmpFilename(self.TmpDir)))
-        if not suppress_stderr:
-            err = FilePath(self.getTmpFilename(self.TmpDir))
 
-        outfile = open(out, 'w+b')
-        errfile = open(err, 'w+b')
+        if suppress_stdout:
+            outfile = open(os.devnull, 'w')
+        else:
+            if stdout is not None:
+                outfile = stdout
+            else:
+                outfile = tempfile.NamedTemporaryFile(dir=self.TmpDir)
+        if suppress_stderr:
+            errfile = open(os.devnull, 'w')
+        else:
+            if stderr is not None:
+                errfile = stderr
+            else:
+                errfile = tempfile.NamedTemporaryFile(dir=self.TmpDir)
+
 
         if data is None:
             input_arg = ''
@@ -170,7 +232,7 @@ class ExtentedCommandLneApplication(CommandLineApplication):
 
 
         try:
-            result = CommandLineAppResult(\
+            result = AmplishotCommandLineAppResult(\
              outfile, errfile, exit_status,
              result_paths=self._get_result_paths(data))
         except ApplicationError:

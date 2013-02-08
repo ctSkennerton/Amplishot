@@ -25,13 +25,12 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
-import logging
 import sys
 import os
 import yaml
@@ -122,7 +121,6 @@ class AmplishotConfig(object):
         for key, value in vars(args).items():
             if key in self.data:
                 self.data[key] = value
-        logging.debug(self)
 ###############################################################################
 ###############################################################################
 ###############################################################################

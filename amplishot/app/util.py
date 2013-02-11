@@ -186,14 +186,14 @@ class ExtendedCommandLneApplication(CommandLineApplication):
         suppress_stderr = self.SuppressStderr
 
         if suppress_stdout:
-            outfile = open(os.devnull, 'w')
+            outfile = open(os.devnull, 'w+b')
         else:
             if stdout is not None:
                 outfile = stdout
             else:
                 outfile = tempfile.NamedTemporaryFile(dir=self.TmpDir)
         if suppress_stderr:
-            errfile = open(os.devnull, 'w')
+            errfile = open(os.devnull, 'w+b')
         else:
             if stderr is not None:
                 errfile = stderr

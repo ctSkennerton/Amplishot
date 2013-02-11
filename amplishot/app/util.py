@@ -161,8 +161,9 @@ class ExtendedCommandLneApplication(CommandLineApplication):
             self._postionals = positionals
 
         super(ExtendedCommandLneApplication, self).__init__(params=params,
-                InputHandler=InputHandler, SuppressStderr=SuppressStderr,
-                TmpNameLen=TmpNameLen, HALT_EXEC=HALT_EXEC)
+                InputHandler=InputHandler, WorkingDir=WorkingDir,
+                SuppressStderr=SuppressStderr, TmpNameLen=TmpNameLen,
+                HALT_EXEC=HALT_EXEC)
 
     def __call__(self, data=None, remove_tmp=True, stdout=None, stderr=None):
         """Run the application with the specified kwargs on data

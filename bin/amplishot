@@ -366,28 +366,33 @@ if __name__ == '__main__':
             path to the bowtie database, without the suffixes; just like you\
             would write when using bowtie")
     pipeline_parser.add_argument('-o',
-            '--output-directory',dest='output_directory',
+            '--output-directory', dest='output_directory',
             default=config.data.get('output_directory', os.getcwd()),
             help='Root directoy under which all files and folders from the\
             pipeline will be generated from')
     pipeline_parser.add_argument('-m', '--minscore', dest='phrap_minscore',
-            type=int, default=config.data.get('phrap_minscore', 300), 
+            type=int, default=config.data.get('phrap_minscore', 300),
             help='The minimum alignment score used in\
             the phrap assembly')
     pipeline_parser.add_argument('-s', '--similarity', type=float,
             dest='otu_clustering_similarity',
-            default=config.data.get('otu_clustering_similarity', 0.97), help='The similarity'\
+            default=config.data.get('otu_clustering_similarity', 0.97),
+            help='The similarity'\
                     ' required between sequences AFTER reconstruction'\
                     ' for OTU clustering')
     pipeline_parser.add_argument('-i', '--input', nargs=2, action='append',
-            required=True, help='paths to first and pecond pairs of reads for \'pairtig\'\
+            required=True,
+            help='paths to first and pecond pairs of reads for \'pairtig\'\
             generation.  Can be specified multiple times for many samples',
             dest='input_raw_reads')
-    pipeline_parser.add_argument('-l', '--min-length', default=config.data.get('minimum_pairtig_length', 350),
-            dest='minimum_pairtig_length', help='The minimal acceptable length for\
+    pipeline_parser.add_argument('-l', '--min-length',
+            default=config.data.get('minimum_pairtig_length', 350),
+            dest='minimum_pairtig_length',
+            help='The minimal acceptable length for\
             assembled pairs')
-    pipeline_parser.add_argument('-O', '--overlap-length', default=config.data.get('pair_overlap_length', 30),
-            dest='pair_overlap_length', 
+    pipeline_parser.add_argument('-O', '--overlap-length',
+            default=config.data.get('pair_overlap_length', 30),
+            dest='pair_overlap_length',
             help='the minimum length that pairs must overlap by')
     pipeline_parser.set_defaults(func=pipeline)
 

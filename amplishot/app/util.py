@@ -149,14 +149,13 @@ class ExtendedCommandLneApplication(CommandLineApplication):
         end of the command line
     """
     
-    _positionals = []
-
     def __init__(self, params=None, positionals=None, InputHandler=None,
             SuppressStderr=None, SuppressStdout=None, WorkingDir=None,
             TmpDir='/tmp', TmpNameLen=20, HALT_EXEC=False,
             PrependPositionals=False):
         """ Set up the ExtendedCommandLineApplication
         """
+        self._positionals = []
         self.prependPositionals = PrependPositionals
         if positionals:
             self._postionals = positionals

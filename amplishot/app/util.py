@@ -269,10 +269,16 @@ class ExtendedCommandLneApplication(CommandLineApplication):
             command_parts.append(self._command_delimiter.join(filter(\
                 None, (map(str, parameters.values())))))
         else:
-            command_parts.extend(map(str, self._positionals))
             command_parts.append(self._command_delimiter.join(filter(\
                 None, (map(str, parameters.values())))))
+            command_parts.extend(map(str, self._positionals))
 
         return self._command_delimiter.join(command_parts).strip()
     
     BaseCommand = property(_get_base_command)
+
+    def __str__(self):
+        return self.BaseCommand
+
+    def add_positional_argument(self, value):
+        self._positionals.append(value)

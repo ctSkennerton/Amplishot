@@ -43,10 +43,10 @@ import gzip
 from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy
-from amplishot.app import bowtie, phrap, pandaseq_pycogent
+from amplishot.app import bowtie, phrap_pycogent, pandaseq_pycogent
 from amplishot.config import AmplishotConfig
 from cogent.app.cd_hit import CD_HIT_EST
-
+from cogent.app.util import FilePath
 ###############################################################################
 
 def map_to_reference(stderr=False, stdout=True, **kwargs):
@@ -96,12 +96,15 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
 
 def phrap_assemble(workingdir, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True, minscore=300):
-    p = amplishot.app.phrap.Phrap(infile=infile, minscore=minscore)
+    p = amplishot.app.phrap_pycogent.Phrap(SuppressStdout=suppressStdout,
+            SuppressStderr=suppressStderr, WorkingDir=workingdir,
+            PrependPositionals=True)
+    p.Parameters['-minscore'].on(300)
+    p.Parameters['-ace'].on()
+    p.add_positional_argument(FilePath(infile))
     logging.debug('%s (wd: %s)', str(p), workingdir)
-    stdout, stderr = p(stdout=suppressStdout, stderr=suppressStderr,
-           cwd=workingdir)
 
-    return stdout, stderr, p.get_result_paths(cwd=workingdir)
+    return p()
 
 def demultiplex(args):
     pass
@@ -109,14 +112,15 @@ def assemble(args):
     pass
 
 
-def overlap(forward, reverse, minPairtigLen=350, minOverlap=30):
+def overlap(forward, reverse, minPairtigLen=350, minOverlap=30, stdout=None,
+        stderr=None):
     panda = pandaseq_pycogent.Pandaseq()
     panda.Parameters['-f'].on(forward)
     panda.Parameters['-r'].on(reverse)
     panda.Parameters['-l'].on(minPairtigLen)
     panda.Parameters['-o'].on(minOverlap)
     panda.Parameters['-F'].on()
-    return panda()
+    return panda(stdout=stdout, stderr=stderr)
 
 
 def map_reads(args):
@@ -147,14 +151,12 @@ def pipeline(config):
         #forward = config.data['input_raw_reads'][i][0]
         #reverse = config.data['input_raw_reads'][i][1]
         logging.info('generating pairtigs for %s %s', forward, reverse)
-        panda_out = overlap(forward, reverse,
-                config.data['minimum_pairtig_length'],
-                config.data['pair_overlap_length'])
         pairtig_file = os.path.join(pairtig_dir,
-            os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq.gz')
-        with gzip.open(pairtig_file, 'wb') as fp:
-            for line in panda_out['StdOut']:
-                fp.write(line)
+            os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq')
+        with open(pairtig_file, 'wb') as fp:
+            panda_out = overlap(forward, reverse,
+                    config.data['minimum_pairtig_length'],
+                    config.data['pair_overlap_length'], stdout=fp)
         config.data['pairtig_read_files'].append(pairtig_file)
 
     # map overlapped fragments with bowtie
@@ -171,7 +173,7 @@ def pipeline(config):
     if config.data['aliases']:
         indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
     else:
-        logging.debug(config.data['pairtig_read_files'])
+        #logging.debug(config.data['pairtig_read_files'])
         for readfile in config.data['pairtig_read_files']:
             sample_file_name =\
             os.path.splitext(os.path.basename(readfile))[0]
@@ -194,7 +196,8 @@ def pipeline(config):
         taxseg.parse_sam(tmp_samfile )
         good_taxons, bad_taxons = taxseg.segregate(root=taxon_root, 
                 minCount=config.data['taxon_coverage'][1], 
-                minCoverage=config.data['taxon_coverage'][0])
+                minCoverage=config.data['taxon_coverage'][0],
+                sam=True)
         taxseg.clear()
 
         if len(good_taxons) < 1:
@@ -222,15 +225,15 @@ def pipeline(config):
             ## generate overlaps - phrap - each partition
             full_length_counter = 1
             for t in good_taxons:
-                stdout, stderr, results = phrap_assemble(t,
+                results = phrap_assemble(t,
                         minscore=config.data['phrap_minscore'])
                 # collect all full-length sequences
-                with open(results['contigs']) as fp:
-                    fxparser = amplishot.parse.fastx.FastxReader(fp)
-                    for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
-                    length=config.data['minimum_reconstruction_length']):
-                        full_length_seqs.write('>%s_%i\n%s\n' % (sample_file_name, full_length_counter, seq))
-                        full_length_counter += 1
+                fxparser = amplishot.parse.fastx.FastxReader(results['contigs'])
+                for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
+                length=config.data['minimum_reconstruction_length']):
+                    full_length_seqs.write('>%s_%i %s\n%s\n' %
+                            (sample_file_name, full_length_counter, name, seq))
+                    full_length_counter += 1
 
     full_length_seqs.close()
     # pick OTUs and representative set
@@ -287,6 +290,8 @@ def pipeline(config):
         abundance.normalize()
         with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
             fp.write(str(abundance))
+
+    logging.info('Done.')
 
 ###############################################################################
 ###############################################################################

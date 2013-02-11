@@ -265,9 +265,9 @@ class ExtendedCommandLneApplication(CommandLineApplication):
         
         command_parts.append(command)
         if self.prependPositionals:
+            command_parts.extend(map(str, self._positionals))
             command_parts.append(self._command_delimiter.join(filter(\
                 None, (map(str, parameters.values())))))
-            command_parts.extend(map(str, self._positionals))
         else:
             command_parts.extend(map(str, self._positionals))
             command_parts.append(self._command_delimiter.join(filter(\

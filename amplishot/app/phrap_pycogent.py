@@ -24,18 +24,18 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
 import os
-from amplishot.app.util import ExtendedCommandLneApplication
+from amplishot.app.util import ExtendedCommandLineApplication
 from cogent.app.util import ApplicationError, ValuedParameter, FlagParameter,\
         FilePath, ResultPath
 
-class Phrap(ExtendedCommandLneApplication):
+class Phrap(ExtendedCommandLineApplication):
     """Simple phrap application controller.
     """
     _parameters = {

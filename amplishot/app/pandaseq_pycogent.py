@@ -24,17 +24,17 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
 from cogent.app.parameters import FlagParameter, ValuedParameter
-from amplishot.app.util import ExtendedCommandLneApplication
+from amplishot.app.util import ExtendedCommandLineApplication
 #from cogent.app.util import CommandLineApplication
 
-class Pandaseq(ExtendedCommandLneApplication):
+class Pandaseq(ExtendedCommandLineApplication):
     """Simple pandaseq application controller.
     """
     _parameters = {

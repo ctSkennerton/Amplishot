@@ -24,7 +24,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -92,7 +92,7 @@ class AmplishotCommandLineAppResult(dict):
 class RepeatedParameter(Parameter):
     """ A parameter with many occurances on the command line
     """
-    def __init__(self, Prefix, Name, Value=None, Delimiter=None, Quote=None,\
+    def __init__(self, Prefix, Name, Value=[], Delimiter=None, Quote=None,\
         IsPath=False):
         if IsPath and Value:
             Value = map(FilePath, Value)
@@ -102,9 +102,12 @@ class RepeatedParameter(Parameter):
 
     def __str__(self):
         ret = str()
-        join_str = self.Id + self.Delimiter + self.Quote
         for i in self.Value:
-            ret += ' %s %s%s ' % (join_str, i, self.Quote)
+            ret += ' %s%s' % (self.Id, self.Delimiter)
+            if self.Quote is None:
+                ret += '%s ' % str(i)
+            else:
+                ret += '%s%s%s ' % (self.Quote, str(i), self.Quote)
         return ret
 
     def append(self, value):
@@ -129,7 +132,7 @@ class RepeatedParameter(Parameter):
                 self.extend(value)
             else:
                 if self.IsPath:
-                    value = RFilePath(value)
+                    value = FilePath(value)
                 self.append(value)
 
         else:
@@ -141,7 +144,7 @@ class RepeatedParameter(Parameter):
         self.Value = None
 
 
-class ExtendedCommandLneApplication(CommandLineApplication):
+class ExtendedCommandLineApplication(CommandLineApplication):
     """ Class containing new parameters for dealing with positional arguments
         This class contains a new class variable for positional arguments that
         is a list of Parameters.  There is also a boolean flag which indicates
@@ -160,7 +163,7 @@ class ExtendedCommandLneApplication(CommandLineApplication):
         if positionals:
             self._postionals = positionals
 
-        super(ExtendedCommandLneApplication, self).__init__(params=params,
+        super(ExtendedCommandLineApplication, self).__init__(params=params,
                 InputHandler=InputHandler, WorkingDir=WorkingDir,
                 SuppressStderr=SuppressStderr, TmpNameLen=TmpNameLen,
                 HALT_EXEC=HALT_EXEC)

@@ -30,10 +30,12 @@ __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
-from amplishot.app.util import ExtendedCommandLineApplication
-from cogent.app.util import ApplicationError
+import os
+from amplishot.app.util import ExtendedCommandLneApplication
+from cogent.app.util import ApplicationError, ValuedParameter, FlagParameter,\
+        FilePath, ResultPath
 
-class Phrap(ExtendedCommandLineApplication):
+class Phrap(ExtendedCommandLneApplication):
     """Simple phrap application controller.
     """
     _parameters = {
@@ -162,16 +164,20 @@ class Phrap(ExtendedCommandLineApplication):
         return exit_status == 0
     
     def _get_result_paths(self, data):
-        oprefix = self.Parameters['infile']
+        oprefix = self._positionals[0]
         results = {
-                'contigs': ResultPath(Path=oprefix + '.contigs', IsWritten=True),
-                'contigsQual': ResultPath(Path=oprefix + '.contigs.qual',
+                'contigs': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.contigs'), IsWritten=True),
+                'contigs_qual': ResultPath(Path=os.path.join(self.WorkingDir, oprefix +\
+                    '.contigs.qual'), IsWritten=True),
+                'log': ResultPath(Path=os.path.join(self.WorkingDir, oprefix +\
+                    '.log'), IsWritten=True),
+                'problems': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.problems'), IsWritten=True),
+                'problems_qual': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.problems.qual'),
                     IsWritten=True),
-                'log': ResultPath(Path=oprefix + '.log', IsWritten=True),
-                'problems': ResultPath(Path=oprefix + '.problems',
-                    IsWritten=True),
-                'problemsQual': ResultPath(Path=oprefix + '.problems.qual',
-                    IsWritten=True),
-                'singlets': ResultPath(Path=oprefix + '.singlets', IsWritten=True)
+                'singlets': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.singlets'), IsWritten=True)
                 }
         return results

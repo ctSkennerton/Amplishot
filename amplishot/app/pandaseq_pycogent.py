@@ -31,9 +31,10 @@ __status__ = "Development"
 
 ###############################################################################
 from cogent.app.parameters import FlagParameter, ValuedParameter
-from cogent.app.util import CommandLineApplication
+from amplishot.app.util import ExtendedCommandLneApplication
+#from cogent.app.util import CommandLineApplication
 
-class Pandaseq(CommandLineApplication):
+class Pandaseq(ExtendedCommandLneApplication):
     """Simple pandaseq application controller.
     """
     _parameters = {

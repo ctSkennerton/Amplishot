@@ -34,8 +34,9 @@ __status__ = "Development"
 
 import tempfile
 import os
+import logging
 import amplishot.parse.sam
-import amplishot.app.bowtie
+import amplishot.app.bowtie_pycogent
 from qiime.pick_otus  import otu_picking_method_constructors,\
  otu_picking_method_choices, MothurOtuPicker
 from qiime.pick_rep_set import (rep_set_picking_methods,
@@ -92,13 +93,13 @@ class OTUTableGenerator(object):
             tmp.write('>%s\n%s\n' % (name, seq))
 
         tmp.close()
-        bi = amplishot.app.bowtie.BowtieIndex(reference_in=tmp.name,
-                index=self.outprefix)
-        bi(stdout=False, stderr=False, cwd=self.outdir)
+        bi = amplishot.app.bowtie_pycogent.Bowtie2Build(WorkingDir=self.outdir)
+        logging.debug(str(bi))
+        bi([tmp.name, self.outprefix])
 
         os.remove(tmp.name)
 
-    def generate_abundance(self, reads, alias=None):
+    def generate_abundance(self, reads, alias=None, threads=1):
         """ Take in a set of reads and map them with bowtie to the rep set
         reads: should be a list of paths to files containing reads
         Would have been one of the same ones that was originally
@@ -111,10 +112,11 @@ class OTUTableGenerator(object):
         self.aliases.append(alias)
 
         tmp = tempfile.TemporaryFile()
-        stdout, stderr = self._make_sam(reads)
-        tmp.write(stdout)
+
+        results = self._make_sam(reads, threads=threads, stdout=tmp)
         tmp.seek(0)
         self._parse_sam(tmp)
+        results.cleanUp()
 
     def generate_biom_table(self, sample_metadata=None, observation_metadata=None):
         # trim the array if needed
@@ -130,12 +132,14 @@ class OTUTableGenerator(object):
         if observation_metadata is not None:
             self.biom_table.addObservationMetadata(observation_metadata)
     
-    def _make_sam(self, reads):
+    def _make_sam(self, reads, threads=1, stdout=None):
         """ Call bowtie on a combined set of full length sequences
         """
-        b = amplishot.app.bowtie.Bowtie(index=os.path.join(self.outdir,
-            self.outprefix), unpaired_reads=reads)
-        return b(stderr=False)
+        b = amplishot.app.bowtie_pycogent.Bowtie2(params={'-x': os.path.join(self.outdir,
+            self.outprefix), '-U': reads, '-p': threads})
+        logging.debug(str(b))
+        return b(stdout=stdout)
+
 
     def _parse_sam(self, sam, percentId=0.97):
         """ count the number of reads that map to a full length sequence

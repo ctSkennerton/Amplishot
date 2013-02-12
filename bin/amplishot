@@ -40,6 +40,7 @@ import shutil
 import subprocess
 import textwrap
 import gzip
+import multiprocessing
 from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy
@@ -58,7 +59,7 @@ def map_to_reference(params=None, stderr=None,
     """
     b = amplishot.app.bowtie_pycogent.Bowtie2(params=params, SuppressStderr=True,
             SuppressStdout=True)
-    logging.info(str(b))
+    logging.debug(str(b))
     return b(stderr=stderr, stdout=stdout)
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):
@@ -184,7 +185,7 @@ def pipeline(config):
     for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
         sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
-        map_to_reference( params={'-U': readfile,
+        bowtie_results = map_to_reference( params={'-U': readfile,
             '-x': config.data['mapper_database'],
             '-S': sample_mapping_file,
             '-p': config.data['threads']})
@@ -193,6 +194,8 @@ def pipeline(config):
         logging.info('partitioning...')
         taxon_root = os.path.join(root_dir, samplename, 'root')
         taxseg.parse_sam(open(sample_mapping_file))
+        bowtie_results.cleanUp()
+
         good_taxons, bad_taxons = taxseg.segregate(root=taxon_root, 
                 minCount=config.data['taxon_coverage'][1], 
                 minCoverage=config.data['taxon_coverage'][0],
@@ -211,12 +214,17 @@ def pipeline(config):
                 good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
             
             # dataset reduction - cd-hit - each partition
+            pool = multiprocessing.Pool(processes=config.data['threads'])
             logging.info('clustering...')
             for t in good_taxons:
-                cd_hit_reduce(t, infile='reads.fa', 
+                pool.apply_async(cd_hit_reduce, (t,), dict(infile='reads.fa', 
                     similarity=config.data['read_clustering_similarity'],
-                    maxMemory=config.data['cdhit_max_memory'])
-            
+                    maxMemory=config.data['cdhit_max_memory']))
+                #cd_hit_reduce(t, infile='reads.fa', 
+                #    similarity=config.data['read_clustering_similarity'],
+                #    maxMemory=config.data['cdhit_max_memory'])
+            pool.close()
+            pool.join()
             logging.info('assembling...')
             for t in good_taxons:
                 process_cd_hit_results(t, cdhitin='reads.fa')
@@ -278,7 +286,8 @@ def pipeline(config):
             root_dir)
     #generate abundance based on coverage and create OTU table
     for read_file, sample_name in indata:
-        abundance.generate_abundance(read_file, alias=sample_name)
+        abundance.generate_abundance(read_file, alias=sample_name,
+                threads=config.data['threads'])
     
     abundance.generate_biom_table()
     abundance.add_metadata(observation_metadata=observation_metadata)

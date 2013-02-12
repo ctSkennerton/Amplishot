@@ -31,13 +31,12 @@ __status__ = "Development"
 
 ###############################################################################
 
-from cogent.app.util import CommandLineApplication
 from cogent.app.parameters import FlagParameter, ValuedParameter
 from amplishot.app.util import ExtendedCommandLineApplication,\
 ValuedParameter
 
 
-class Bowtie2Build(CommandLineApplication):
+class Bowtie2Build(ExtendedCommandLineApplication):
     """ Simple wrapper for bowtie index
     """
     _parameters = {

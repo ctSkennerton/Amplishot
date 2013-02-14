@@ -104,6 +104,9 @@ def phrap_assemble(workingdir, infile='cdhitout.fa',
             PrependPositionals=True)
     p.Parameters['-minscore'].on(300)
     p.Parameters['-ace'].on()
+    p.Parameters['-penalty'].on(-9)
+    p.Parameters['-gap_init'].on(-11)
+    p.Parameters['-gap_ext'].on(-10)
     p.add_positional_argument(FilePath(infile))
     logging.debug('%s (wd: %s)', str(p), workingdir)
 
@@ -239,7 +242,7 @@ def pipeline(config):
                 for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
                 length=config.data['minimum_reconstruction_length']):
                     full_length_seqs.write('>%s_%i %s\n%s\n' %
-                            (sample_file_name, full_length_counter, name, seq))
+                            (samplename, full_length_counter, name, seq))
                     full_length_counter += 1
 
     full_length_seqs.close()

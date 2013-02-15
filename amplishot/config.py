@@ -89,6 +89,12 @@ read_mapping_percent: 0.90 # the percent identity that individual reads have to 
 repset_output_file: full_length_sequences.repset.fa
 assign_taxonomy_method: bowtie
 minimum_taxon_similarity: 0.90 # sequences that fall below this cutoff will be listed as no taxonomy
+phrap:
+    '-minscore': 300
+    '-penalty': -9
+    '-gap_ext': -10
+    '-gap_init': -11
+    '-ace': True
 '''
 class AmplishotConfig(object):
     """ Class for reading the config file

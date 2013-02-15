@@ -43,8 +43,8 @@ import gzip
 import multiprocessing
 from collections import defaultdict
 import amplishot.parse.fastx
-from amplishot import taxon_segregator, otu_table, assign_taxonomy
-from amplishot.app import bowtie_pycogent, phrap_pycogent, pandaseq_pycogent
+from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble
+from amplishot.app import bowtie_pycogent,pandaseq_pycogent
 from amplishot.config import AmplishotConfig
 from cogent.app.cd_hit import CD_HIT_EST
 from cogent.app.util import FilePath
@@ -71,50 +71,7 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     return taxseg.segregate(root=rootdir)
 
 
-def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa', similarity=0.98, maxMemory=1000):
-    cdhit = CD_HIT_EST(WorkingDir=workingdir)
-    cdhit.Parameters['-i'].on(infile)
-    cdhit.Parameters['-o'].on(outfile)
-    cdhit.Parameters['-c'].on(similarity)
-    cdhit.Parameters['-M'].on(maxMemory)
-    cdhit()
-
-
-def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
-    clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
-    clustered_reads = set()
-    cd_hit_fasta = open(os.path.join(directory,cdhitout))
-    fxparser = amplishot.parse.fastx.FastxReader(cd_hit_fasta)
-    for name, seq, qual in fxparser.parse():
-        clustered_reads.add(name)
-
-    cd_hit_fasta.close()
-    inqual = open(os.path.join(directory,cdhitin+'.qual'))
-    qualparser = amplishot.parse.fastx.QualityReader(inqual)
-    for name, qual in qualparser.parse():
-        if name in clustered_reads:
-            clustered_qual.write('>%s\n%s\n' % (name, qual))
-    inqual.close()
-
-
-def phrap_assemble(workingdir, infile='cdhitout.fa',
-        suppressStdout=True, suppressStderr=True, minscore=300):
-    p = amplishot.app.phrap_pycogent.Phrap(SuppressStdout=suppressStdout,
-            SuppressStderr=suppressStderr, WorkingDir=workingdir,
-            PrependPositionals=True)
-    p.Parameters['-minscore'].on(300)
-    p.Parameters['-ace'].on()
-    p.Parameters['-penalty'].on(-9)
-    p.Parameters['-gap_init'].on(-11)
-    p.Parameters['-gap_ext'].on(-10)
-    p.add_positional_argument(FilePath(infile))
-    logging.debug('%s (wd: %s)', str(p), workingdir)
-
-    return p()
-
 def demultiplex(args):
-    pass
-def assemble(args):
     pass
 
 
@@ -129,9 +86,6 @@ def overlap(forward, reverse, minPairtigLen=350, minOverlap=30, stdout=None,
     return panda(stdout=stdout, stderr=stderr)
 
 
-def map_reads(args):
-    pass
-
 def filter_sam(args): 
     taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
     for samfile in args.sam:
@@ -140,7 +94,6 @@ def filter_sam(args):
             minCoverage=args.taxon_depth)
     
 
-def cluster(args): pass
 def pipeline(config):
     """Run all the steps of amplishot
     """
@@ -179,12 +132,14 @@ def pipeline(config):
     if config.data['aliases']:
         indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
     else:
-        #logging.debug(config.data['pairtig_read_files'])
         for readfile in config.data['pairtig_read_files']:
             sample_file_name =\
             os.path.splitext(os.path.basename(readfile))[0]
             indata.append((readfile, sample_file_name))
     
+    # assembly wrapper
+    wrapper = assemble.AssemblyWrapper('phrap', config)
+
     for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
         sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
@@ -216,34 +171,9 @@ def pipeline(config):
             else:
                 good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
             
-            # dataset reduction - cd-hit - each partition
-            pool = multiprocessing.Pool(processes=config.data['threads'])
-            logging.info('clustering...')
-            for t in good_taxons:
-                pool.apply_async(cd_hit_reduce, (t,), dict(infile='reads.fa', 
-                    similarity=config.data['read_clustering_similarity'],
-                    maxMemory=config.data['cdhit_max_memory']))
-                #cd_hit_reduce(t, infile='reads.fa', 
-                #    similarity=config.data['read_clustering_similarity'],
-                #    maxMemory=config.data['cdhit_max_memory'])
-            pool.close()
-            pool.join()
-            logging.info('assembling...')
-            for t in good_taxons:
-                process_cd_hit_results(t, cdhitin='reads.fa')
+            wrapper(good_taxons, samplename)
 
-            ## generate overlaps - phrap - each partition
-            full_length_counter = 1
-            for t in good_taxons:
-                results = phrap_assemble(t,
-                        minscore=config.data['phrap_minscore'])
-                # collect all full-length sequences
-                fxparser = amplishot.parse.fastx.FastxReader(results['contigs'])
-                for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
-                length=config.data['minimum_reconstruction_length']):
-                    full_length_seqs.write('>%s_%i %s\n%s\n' %
-                            (samplename, full_length_counter, name, seq))
-                    full_length_counter += 1
+    wrapper.write(full_length_seqs)
 
     full_length_seqs.close()
     # pick OTUs and representative set
@@ -443,116 +373,116 @@ if __name__ == '__main__':
 #--------------------
     # overlap parser
     # amplishot overlap [OPTIONS] {<file1> <file2>}...
-    overlap_parser = subparser.add_parser('overlap', 
-            help='overlap read pairs to generate a consensus sequence',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser, threads_parser]
-            )
-    overlap_parser.add_argument('-i', '--input', nargs=2, action='append',
-            help='paths to first and pecond pairs of reads for \'pairtig\'\
-            generation.  Can be specified multiple times for many samples',
-            dest='input_raw_reads')
-    overlap_parser.add_argument('-o', '--output-directory',
-            default=config.data.get('output_directory', os.getcwd()), dest='output_directory', 
-            help='Output directory for the consensus fragments')
-    overlap_parser.add_argument('-l', '--min-length', default=config.data.get('minimum_pairtig_length', 350),
-            dest='minimum_pairtig_length', help='The minimal acceptable length for\
-            assembled pairs')
-    overlap_parser.add_argument('-O', '--overlap-length', default=config.data.get('pair_overlap_length', 30),
-            dest='pair_overlap_length', 
-            help='the minimum length that pairs must overlap by')
-    overlap_parser.set_defaults(func=overlap)
+    #overlap_parser = subparser.add_parser('overlap', 
+    #        help='overlap read pairs to generate a consensus sequence',
+    #        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    #        parents=[common_options_parser, threads_parser]
+    #        )
+    #overlap_parser.add_argument('-i', '--input', nargs=2, action='append',
+    #        help='paths to first and pecond pairs of reads for \'pairtig\'\
+    #        generation.  Can be specified multiple times for many samples',
+    #        dest='input_raw_reads')
+    #overlap_parser.add_argument('-o', '--output-directory',
+    #        default=config.data.get('output_directory', os.getcwd()), dest='output_directory', 
+    #        help='Output directory for the consensus fragments')
+    #overlap_parser.add_argument('-l', '--min-length', default=config.data.get('minimum_pairtig_length', 350),
+    #        dest='minimum_pairtig_length', help='The minimal acceptable length for\
+    #        assembled pairs')
+    #overlap_parser.add_argument('-O', '--overlap-length', default=config.data.get('pair_overlap_length', 30),
+    #        dest='pair_overlap_length', 
+    #        help='the minimum length that pairs must overlap by')
+    #overlap_parser.set_defaults(func=overlap)
 
 #--------------------
     # mapping parser
     # amplishot map [OPTIONS] <file>...
-    map_parser = subparser.add_parser('map',
-            help='map assembled pairs to a reference database',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser, threads_parser]
-            )
-    map_parser.add_argument('-i', '--input-reads', dest='pairtig_read_files',
-            action='append', help='path to file containing \'pairtigs\'.  Can\
-            be specified multiple times for multiple samples')
-    map_parser.add_argument('-a', '--alias', dest='aliases', help='specify\
-            an alias for the input file to give it a different name in the\
-            resulting analyses')
-    map_parser.add_argument('-x', '--index', dest='mapper_database',
-            required=True, help='Path to the index file conatining'\
-                    'the 16S database. Must be in bowtie2 format')
-    map_parser.add_argument('-o', '--output-directory', dest='directory', 
-            default=config.data.get('output_directory', os.getcwd()),
-            help='Root directoy under which all files and folders from the\
-            pipeline will be generated from')
-    map_parser.set_defaults(func=map_reads)
+    #map_parser = subparser.add_parser('map',
+    #        help='map assembled pairs to a reference database',
+    #        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    #        parents=[common_options_parser, threads_parser]
+    #        )
+    #map_parser.add_argument('-i', '--input-reads', dest='pairtig_read_files',
+    #        action='append', help='path to file containing \'pairtigs\'.  Can\
+    #        be specified multiple times for multiple samples')
+    #map_parser.add_argument('-a', '--alias', dest='aliases', help='specify\
+    #        an alias for the input file to give it a different name in the\
+    #        resulting analyses')
+    #map_parser.add_argument('-x', '--index', dest='mapper_database',
+    #        required=True, help='Path to the index file conatining'\
+    #                'the 16S database. Must be in bowtie2 format')
+    #map_parser.add_argument('-o', '--output-directory', dest='directory', 
+    #        default=config.data.get('output_directory', os.getcwd()),
+    #        help='Root directoy under which all files and folders from the\
+    #        pipeline will be generated from')
+    #map_parser.set_defaults(func=map_reads)
 
 #--------------------
     # filtering parser
     # amplishot filter [OPTIONS] <file.sam>...
-    filter_parser = subparser.add_parser('filter',
-            help='segregate reads based on the similarity and taxonomy\
-            of reference sequences',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser]
-            )
-    filter_parser.add_argument('-o', '--output-directory',
-            dest='filter_output_directory_prefix',
-            default=config.data.get('output_directory', os.getcwd()), 
-            help='output directory prefix')
-    filter_parser.add_argument('-T', '--taxonomy-file', required=True,
-            dest='taxonomy_file', help='A mapping file in either Greengenes or\
-            SILVA format that maps the reference IDs to their taxonomies')
-    filter_parser.add_argument('-p', '--percent-id', type=float, 
-            default=config.data.get('initial_mapping_similarity', 0.98),
-            dest='initial_mapping_similarity',
-            help='''The global percentage Identity that a read must have to the\
-            reference sequence. A good rule of thumb is to set this value to\
-            be 1% lower than the clustering percentage used on the reference\
-            database.''')
-    filter_parser.add_argument('-C', '--taxon-coverage', nargs=2,
-            default=config.data.get('taxon_coverage', [2, 1000]), dest='taxon_coverage',
-            help='After taxonomic filtering, this value dictates the minimum\
-            coverage and minimum nuber of bases that must be covered in that taxon\
-            to be considered suitable for assembly.  Takes the form of two\
-            numbered list: the first number is the minimum coverage and the\
-            second number is the number of bases that need to be covered')
-    filter_parser.set_defaults(func=filter_sam)
+    #filter_parser = subparser.add_parser('filter',
+    #        help='segregate reads based on the similarity and taxonomy\
+    #        of reference sequences',
+    #        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    #        parents=[common_options_parser]
+    #        )
+    #filter_parser.add_argument('-o', '--output-directory',
+    #        dest='filter_output_directory_prefix',
+    #        default=config.data.get('output_directory', os.getcwd()), 
+    #        help='output directory prefix')
+    #filter_parser.add_argument('-T', '--taxonomy-file', required=True,
+    #        dest='taxonomy_file', help='A mapping file in either Greengenes or\
+    #        SILVA format that maps the reference IDs to their taxonomies')
+    #filter_parser.add_argument('-p', '--percent-id', type=float, 
+    #        default=config.data.get('initial_mapping_similarity', 0.98),
+    #        dest='initial_mapping_similarity',
+    #        help='''The global percentage Identity that a read must have to the\
+    #        reference sequence. A good rule of thumb is to set this value to\
+    #        be 1% lower than the clustering percentage used on the reference\
+    #        database.''')
+    #filter_parser.add_argument('-C', '--taxon-coverage', nargs=2,
+    #        default=config.data.get('taxon_coverage', [2, 1000]), dest='taxon_coverage',
+    #        help='After taxonomic filtering, this value dictates the minimum\
+    #        coverage and minimum nuber of bases that must be covered in that taxon\
+    #        to be considered suitable for assembly.  Takes the form of two\
+    #        numbered list: the first number is the minimum coverage and the\
+    #        second number is the number of bases that need to be covered')
+    #filter_parser.set_defaults(func=filter_sam)
 
 #--------------------
     #clustering parser
     # amplishot cluster [OPTIONS] <file>...
-    cluster_parser = subparser.add_parser('reduce',
-            help='Remove redundant coverage in taxons.  Greating decreases\
-            assembly time',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser]
-            )
-    cluster_parser.add_argument('-p', '--percent-identity', type=float,
-            default=config.data.get('read_clustering_similarity', 0.98), 
-            dest='read_clustering_similarity',
-            help='The percent identity that two reads must have to be clustered')
-    cluster_parser.add_argument('-i', '--input-directory',
-            dest='output_directory', default=config.data.get('output_directory', os.getcwd()))
-    cluster_parser.add_argument('-m', '--cdhit-max-memory', default=config.data.get('cdhit_max_memory', 1000),
-            dest='cdhit_max_memory')
-    cluster_parser.set_defaults(func=cluster)
+    #cluster_parser = subparser.add_parser('reduce',
+    #        help='Remove redundant coverage in taxons.  Greating decreases\
+    #        assembly time',
+    #        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    #        parents=[common_options_parser]
+    #        )
+    #cluster_parser.add_argument('-p', '--percent-identity', type=float,
+    #        default=config.data.get('read_clustering_similarity', 0.98), 
+    #        dest='read_clustering_similarity',
+    #        help='The percent identity that two reads must have to be clustered')
+    #cluster_parser.add_argument('-i', '--input-directory',
+    #        dest='output_directory', default=config.data.get('output_directory', os.getcwd()))
+    #cluster_parser.add_argument('-m', '--cdhit-max-memory', default=config.data.get('cdhit_max_memory', 1000),
+    #        dest='cdhit_max_memory')
+    #cluster_parser.set_defaults(func=cluster)
 
 #--------------------
     # assembly parser
     # amplishot assemble [OPTIONS] <file.fa>...
-    assembly_parser = subparser.add_parser('assemble',
-            help='Assemble individual taxons into full-length 16S sequences',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser]
-            )
-    assembly_parser.add_argument('-m', '--min-score', dest='phrap_minscore',
-            type=int, default=config.data.get('phrap_minscore', 300),
-            help='The minimum alignment score used in phrap')
-    assembly_parser.add_argument('-i', '--input-directory',
-            dest='output_directory', help='The root directory\
-            containing the samples reads split by taxonomy',
-            default=config.data.get('output_directory', os.getcwd()))
-    assembly_parser.set_defaults(func=assemble)
+    #assembly_parser = subparser.add_parser('assemble',
+    #        help='Assemble individual taxons into full-length 16S sequences',
+    #        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    #        parents=[common_options_parser]
+    #        )
+    #assembly_parser.add_argument('-m', '--min-score', dest='phrap_minscore',
+    #        type=int, default=config.data.get('phrap_minscore', 300),
+    #        help='The minimum alignment score used in phrap')
+    #assembly_parser.add_argument('-i', '--input-directory',
+    #        dest='output_directory', help='The root directory\
+    #        containing the samples reads split by taxonomy',
+    #        default=config.data.get('output_directory', os.getcwd()))
+    #assembly_parser.set_defaults(func=assemble)
     
     
     args = parser.parse_args()

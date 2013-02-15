@@ -147,6 +147,7 @@ def pipeline(config):
             '-x': config.data['mapper_database'],
             '-S': sample_mapping_file,
             '-p': config.data['threads'],
+            #'-u': 10000,
             })
 
         # partition dataset based on mapped reads
@@ -195,10 +196,15 @@ def pipeline(config):
     taxonomy_map = assign_taxonomy.assign_taxonomy(config.data['assign_taxonomy_method'],
             rep_set, config)
 
-    observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
+    observation_metadata = defaultdict(dict)
+    score_field_name = 'confidence'
+    if config.data['assign_taxonomy_method'] == 'blast':
+        score_field_name = 'evalue'
+    elif config.data['assign_taxonomy_method'] == 'bowtie':
+        score_field_name = 'similarity'
     for otu, metadata in taxonomy_map.items():
         observation_metadata[otu]['taxonomy'] = metadata[0].split('; ')
-        observation_metadata[otu]['confidence'] = metadata[1]
+        observation_metadata[otu][score_field_name] = metadata[1]
 
     logging.info('generating OTU table in biom format...')
     

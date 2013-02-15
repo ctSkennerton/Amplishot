@@ -53,7 +53,7 @@ class BowtieTaxonAssigner(TaxonAssigner):
         _params = {
                 'index': None,
                 'percentId': 0.85,
-                'id_to_taxon_fp': None,
+                'id_to_taxonomy_fp': None,
                 'threads': 1,
                 'fasta': True,
                 }
@@ -182,13 +182,20 @@ def assign_taxonomy(assigner, infile, config, result_file=None,
     except KeyError, e:
         if assigner == 'bowtie':
             params['index'] = config.data['mapper_database']
-            params['id_to_taxon_fp'] = config.data['taxonomy_file']
+            params['id_to_taxonomy_fp'] = config.data['taxonomy_file']
         else:
             raise e
     finally:
+        if 'id_to_taxonomy_fp' not in params:
+            params['id_to_taxonomy_fp'] = config.data['taxonomy_file']
         if assigner == 'blast':
-            params['Max E value'] = params['evalue']
-            del params['evalue']
+            params['id_to_taxonomy_filepath'] = params['id_to_taxonomy_fp']
+            try:
+                params['Max E value'] = params['evalue']
+            except KeyError:
+                pass
+            else:
+                del params['evalue']
 
     taxon_assigner_constructor =\
          assignment_method_constructors[assigner]
@@ -201,4 +208,4 @@ def assign_taxonomy(assigner, infile, config, result_file=None,
                      )
     else:
         return taxon_assigner(infile,\
-                     result_path=result_path, log_path=log_path)
+                     result_path=result_file, log_path=log_file)

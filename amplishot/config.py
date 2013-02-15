@@ -87,7 +87,7 @@ otu_clustering_similarity: 0.97 # the similarity used for clustering full-length
 normalize_otu_table: true # output a normalized OTU table as well as non-normalized
 read_mapping_percent: 0.90 # the percent identity that individual reads have to map with to be considered part of the reference
 repset_output_file: full_length_sequences.repset.fa
-assign_taxonomy_method: bowtie
+assign_taxonomy_method: blast
 minimum_taxon_similarity: 0.90 # sequences that fall below this cutoff will be listed as no taxonomy
 phrap:
     '-minscore': 300
@@ -95,6 +95,8 @@ phrap:
     '-gap_ext': -10
     '-gap_init': -11
     '-ace': True
+blast:
+    blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
 '''
 class AmplishotConfig(object):
     """ Class for reading the config file

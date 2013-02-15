@@ -35,10 +35,10 @@ import logging
 import sys
 import os
 import re
-import Bio.Seq
 
 import amplishot.parse.sam
 import amplishot.parse.fastx
+from amplishot.util import reverse_complement
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -197,7 +197,7 @@ class TaxonSegregator(object):
         seq = alignedRead.seq
         quality = alignedRead.qual
         if alignedRead.is_reversed():
-            seq = Bio.Seq.reverse_complement(alignedRead.seq)
+            seq = reverse_complement(alignedRead.seq)
             quality = quality[::-1]
 
         if fasta is not None:

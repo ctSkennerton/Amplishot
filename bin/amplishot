@@ -147,7 +147,7 @@ def pipeline(config):
             '-x': config.data['mapper_database'],
             '-S': sample_mapping_file,
             '-p': config.data['threads'],
-            '-u': 10000,
+            #'-u': 10000,
             })
 
         # partition dataset based on mapped reads

@@ -146,7 +146,8 @@ def pipeline(config):
         bowtie_results = map_to_reference( params={'-U': readfile,
             '-x': config.data['mapper_database'],
             '-S': sample_mapping_file,
-            '-p': config.data['threads']})
+            '-p': config.data['threads'],
+            })
 
         # partition dataset based on mapped reads
         logging.info('partitioning...')
@@ -191,26 +192,13 @@ def pipeline(config):
     logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
     
     #assign taxonomy
-    taxon_mapper = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'])
-    with open(os.path.join(root_dir, 'full_length_alignments.sam'), 'w+b') as fp:
-        map_to_reference(params={'-U': rep_set,
-            '-x': config.data['mapper_database'],
-            '-p': config.data['threads'], '-f': True}, stdout=fp)
-        fp.seek(0)
-        taxon_mapper.parse_sam(fp, percentId=config.data['minimum_taxon_similarity'])
+    taxonomy_map = assign_taxonomy.assign_taxonomy(config.data['assign_taxonomy_method'],
+            rep_set, config)
 
     observation_metadata = defaultdict(dict)  #[{} for i in range(len(abundance.seqs))]
-    for taxon, otu_representatives in taxon_mapper.taxon_mapping.items():
-        gg_tax =\
-        amplishot.assign_taxonomy.greengenes_format(taxon)
-        for otu in otu_representatives:
-            observation_metadata[otu.qname]['taxonomy'] = gg_tax
-            if otu.is_unmapped():
-                observation_metadata[otu.qname]['percent identity'] = 0.0
-            else:
-                observation_metadata[otu.qname]['percent identity'] =\
-                otu.percent_identity()
-            observation_metadata[otu.qname]['cigar'] = otu.cigar
+    for otu, metadata in taxonomy_map.items():
+        observation_metadata[otu]['taxonomy'] = metadata[0].split('; ')
+        observation_metadata[otu]['confidence'] = metadata[1]
 
     logging.info('generating OTU table in biom format...')
     

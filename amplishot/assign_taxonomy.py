@@ -26,7 +26,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.4"
+__version__ = "0.2.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -43,7 +43,7 @@ from qiime.assign_taxonomy import (
         )
 
 from amplishot.parse.sam import SamFileReader
-from amplishot.app.bowtie_pycogent import Bowtie2
+from amplishot.app.bowtie import Bowtie2
 
 ###############################################################################
 class BowtieTaxonAssigner(TaxonAssigner):

@@ -23,7 +23,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.4"
+__version__ = "0.2.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -33,13 +33,13 @@ import multiprocessing
 import os
 from cogent.app.util import FilePath
 from cogent.app.cd_hit import CD_HIT_EST
-from amplishot.app.phrap_pycogent import Phrap
+from amplishot.app.phrap import Phrap
 import amplishot.parse.fastx
 ###############################################################################
 
 def phrap_constructor( workingdir, params=None, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True):
-    p = amplishot.app.phrap_pycogent.Phrap(params=params, SuppressStdout=suppressStdout,
+    p = amplishot.app.phrap.Phrap(params=params, SuppressStdout=suppressStdout,
             SuppressStderr=suppressStderr, WorkingDir=workingdir,
             PrependPositionals=True)
    # p.Parameters['-minscore'].on(300)

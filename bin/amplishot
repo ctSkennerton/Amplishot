@@ -25,7 +25,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2012-2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.4"
+__version__ = "0.2.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -44,7 +44,7 @@ import multiprocessing
 from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble
-from amplishot.app import bowtie_pycogent,pandaseq_pycogent
+from amplishot.app import bowtie,pandaseq
 from amplishot.config import AmplishotConfig
 from cogent.app.cd_hit import CD_HIT_EST
 from cogent.app.util import FilePath
@@ -57,7 +57,7 @@ def map_to_reference(params=None, stderr=None,
        inreads: path to file containing overlapped reads from pandaseq
        bowtiedb: path to fileprefix of the bowtie database
     """
-    b = amplishot.app.bowtie_pycogent.Bowtie2(params=params, SuppressStderr=True,
+    b = amplishot.app.bowtie.Bowtie2(params=params, SuppressStderr=True,
             SuppressStdout=True)
     logging.debug(str(b))
     return b(stderr=stderr, stdout=stdout)
@@ -77,7 +77,7 @@ def demultiplex(args):
 
 def overlap(forward, reverse, minPairtigLen=350, minOverlap=30, stdout=None,
         stderr=None):
-    panda = pandaseq_pycogent.Pandaseq()
+    panda = pandaseq.Pandaseq()
     panda.Parameters['-f'].on(forward)
     panda.Parameters['-r'].on(reverse)
     panda.Parameters['-l'].on(minPairtigLen)
@@ -147,7 +147,7 @@ def pipeline(config):
             '-x': config.data['mapper_database'],
             '-S': sample_mapping_file,
             '-p': config.data['threads'],
-            #'-u': 10000,
+            '-u': 10000,
             })
 
         # partition dataset based on mapped reads

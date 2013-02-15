@@ -25,7 +25,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.1.4"
+__version__ = "0.2.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -36,7 +36,7 @@ import tempfile
 import os
 import logging
 import amplishot.parse.sam
-import amplishot.app.bowtie_pycogent
+import amplishot.app.bowtie
 from qiime.pick_otus  import otu_picking_method_constructors,\
  otu_picking_method_choices, MothurOtuPicker
 from qiime.pick_rep_set import (rep_set_picking_methods,
@@ -93,7 +93,7 @@ class OTUTableGenerator(object):
             tmp.write('>%s\n%s\n' % (name, seq))
 
         tmp.close()
-        bi = amplishot.app.bowtie_pycogent.Bowtie2Build(WorkingDir=self.outdir)
+        bi = amplishot.app.bowtie.Bowtie2Build(WorkingDir=self.outdir)
         logging.debug(str(bi))
         bi([tmp.name, self.outprefix])
 
@@ -135,7 +135,7 @@ class OTUTableGenerator(object):
     def _make_sam(self, reads, threads=1, stdout=None):
         """ Call bowtie on a combined set of full length sequences
         """
-        b = amplishot.app.bowtie_pycogent.Bowtie2(params={'-x': os.path.join(self.outdir,
+        b = amplishot.app.bowtie.Bowtie2(params={'-x': os.path.join(self.outdir,
             self.outprefix), '-U': reads, '-p': threads})
         logging.debug(str(b))
         return b(stdout=stdout)

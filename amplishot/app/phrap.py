@@ -20,141 +20,164 @@
 #                                                                             #
 ###############################################################################
 
-
-from Bio.Application import _Argument, _Switch, _Option, AbstractCommandline
-import os
-
-"""Application controller for phrap"""
-
-
 __author__ = "Connor Skennerton"
-__copyright__ = "Copyright 2012-2013, Connor Skennerton"
+__copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
-__license__ = "GPL"
-__version__ = "0.1.4"
+__license__ = "GPL3"
+__version__ = "0.2.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
-__status__ = "Prototype"
+__status__ = "Development"
 
+###############################################################################
+import os
+from amplishot.app.util import ExtendedCommandLineApplication
+from cogent.app.util import ApplicationError, ValuedParameter, FlagParameter,\
+        FilePath, ResultPath
 
-class Phrap(AbstractCommandline):
+class Phrap(ExtendedCommandLineApplication):
     """Simple phrap application controller.
     """
-    def __init__(self, cmd='phrap', **kwargs):
-        self.parameters = [
+    _parameters = {
+            #'infile': ValuedParameter('','', Delimiter='', IsPath=True),
+            
+            '-penalty': ValuedParameter('-', 'penalty', Delimiter=' '), #Mismatch (substitution) penalty for SWAT comparisons.  
 
-            _Argument(['infile', 'input', 'file'],
-                'Input file containing reads in fasta format',
-                filename=True, is_required=True),
+            '-gap_init': ValuedParameter('-', 'gap_init', Delimiter=' '),# Gap initiation penalty for SWAT comparisons.           
 
-            _Option(['-penalty', 'penalty'],'', equate=False),
+            '-gap_ext': ValuedParameter('-', 'gap_ext', Delimiter=' '), # Gap extension penalty for SWAT comparisons.            
 
-            _Option(['-gap_init','gap_init'],'', equate=False),
+            '-ins_gap_ext': ValuedParameter('-', 'ins_gap_ext', Delimiter=' '), 
 
-            _Option(['-gap_ext','gap_ext'],'', equate=False),
+            '-del_gap_ext': ValuedParameter('-', 'del_gap_ext', Delimiter=' '), 
 
-            _Option(['-ins_gap_ext','ins_gap_ext'],'', equate=False),
+            '-matrix': ValuedParameter('-', 'matrix', Delimiter=' '), 
 
-            _Option(['-del_gap_ext','del_gap_ext'],'', equate=False),
+            '-raw': FlagParameter('-', 'raw'), 
 
-            _Option(['-matrix','matrix'],'', equate=False),
+            '-minmatch': ValuedParameter('-', 'minmatch', Delimiter=' '), 
 
-            _Switch(['-raw','raw'],'',),
+            '-maxmatch': ValuedParameter('-', 'maxmatch', Delimiter=' '), 
 
-            _Option(['-minmatch','minmatch'],'', equate=False),
+            '-max_group_size': ValuedParameter('-', 'max_group_size', Delimiter=' '), 
 
-            _Option(['-maxmatch','maxmatch'],'', equate=False),
+            '-word_raw': FlagParameter('-', 'word_raw'), 
 
-            _Option(['-max_group_size','max_group_size'],'', equate=False),
+            '-bandwidth': ValuedParameter('-', 'bandwidth', Delimiter=' '), 
 
-            _Switch(['-word_raw','word_raw'],'',),
+            '-minscore': ValuedParameter('-', 'minscore', Delimiter=' '), 
 
-            _Option(['-bandwidth','bandwidth'],'', equate=False),
+            '-vector_bound': ValuedParameter('-', 'vector_bound', Delimiter=' '), 
 
-            _Option(['-minscore','minscore'],'', equate=False),
+            '-default_qual': ValuedParameter('-', 'default_qual', Delimiter=' '), 
 
-            _Option(['-vector_bound','vector_bound'],'', equate=False),
+            '-subclone_delim': ValuedParameter('-', 'subclone_delim', Delimiter=' '), 
 
-            _Option(['-default_qual','default_qual'],'', equate=False),
+            '-n_delim': ValuedParameter('-', 'n_delim', Delimiter=' '), 
 
-            _Option(['-subclone_delim','subclone_delim'],'', equate=False),
+            '-group_delim': ValuedParameter('-', 'group_delim', Delimiter=' '), 
 
-            _Option(['-n_delim','n_delim'],'', equate=False),
+            '-trim_start': ValuedParameter('-', 'trim_start', Delimiter=' '), 
+            
+            '-forcelevel': ValuedParameter('-', 'forcelevel', Delimiter=' '), 
 
-            _Option(['-group_delim','group_delim'],'', equate=False),
+            '-bypasslevel': ValuedParameter('-', 'bypasslevel', Delimiter=' '), 
+            
+            '-maxgap': ValuedParameter('-', 'maxgap', Delimiter=' '), 
+            
+            '-repeat_stringency': ValuedParameter('-', 'repeat_stringency', Delimiter=' '), 
 
-            _Option(['-trim_start','trim_start'],'', equate=False),
-        
-            _Option(['-forcelevel','forcelevel'],'', equate=False),
+            '-revise_greedy': FlagParameter('-', 'revise_greedy'), 
 
-            _Option(['-bypasslevel','bypasslevel'],'', equate=False),
-        
-            _Option(['-maxgap','maxgap'],'', equate=False),
-        
-            _Option(['-repeat_stringency','repeat_stringency'],'', equate=False),
+            '-shatter_greedy': FlagParameter('-', 'shatter_greedy'), 
 
-            _Switch(['-revise_greedy','revise_greedy'],'',),
+            '-preassemble': FlagParameter('-', 'preassemble'), 
 
-            _Switch(['-shatter_greedy','shatter_greedy'],'',),
+            '-force_high': FlagParameter('-', 'force_high'), 
 
-            _Switch(['-preassemble','preassemble'],'',),
+            '-node_seg': ValuedParameter('-', 'node_seg', Delimiter=' '), 
 
-            _Switch(['-force_high','force_high'],'',),
+            '-node_space': ValuedParameter('-', 'node_space', Delimiter=' '), 
 
-            _Option(['-node_seg','node_seg'],'', equate=False),
+            '-tags': FlagParameter('-', 'tags'), 
 
-            _Option(['-node_space','node_space'],'', equate=False),
+            '-screen': FlagParameter('-', 'screen'), 
 
-            _Switch(['-tags','tags'],'',),
+            '-old_ace': FlagParameter('-', 'old_ace'), 
 
-            _Switch(['-screen','screen'],'',),
+            '-new_ace': FlagParameter('-', 'new_ace'), 
 
-            _Switch(['-old_ace','old_ace'],'',),
+            '-ace': FlagParameter('-', 'ace'), 
 
-            _Switch(['-new_ace','new_ace'],'',),
+            '-view': FlagParameter('-', 'view'), 
 
-            _Switch(['-ace','ace'],'',),
+            '-qual_show': ValuedParameter('-', 'qual_show', Delimiter=' '), 
 
-            _Switch(['-view','view'],'',),
+            '-print_extraneous_matches': FlagParameter('-', 'print_extraneous_matches'), 
 
-            _Option(['-qual_show','qual_show'],'', equate=False),
+            '-retain_duplicates': FlagParameter('-', 'retain_duplicates'), 
 
-            _Switch(['-print_extraneous_matches','print_extraneous_matches'],'',),
+            '-max_subclone_size': ValuedParameter('-', 'max_subclone_size', Delimiter=' '), 
 
-            _Switch(['-retain_duplicates','retain_duplicates'],'',),
+            '-trim_penalty': ValuedParameter('-', 'trim_penalty', Delimiter=' '), 
 
-            _Option(['-max_subclone_size','max_subclone_size'],'', equate=False),
+            '-trim_score': ValuedParameter('-', 'trim_score', Delimiter=' '), 
 
-            _Option(['-trim_penalty','trim_penalty'],'', equate=False),
+            '-trim_qual': ValuedParameter('-', 'trim_qual', Delimiter=' '), 
 
-            _Option(['-trim_score','trim_score'],'', equate=False),
+            '-confirm_length': ValuedParameter('-', 'confirm_length', Delimiter=' '), 
 
-            _Option(['-trim_qual','trim_qual'],'', equate=False),
+            '-confirm_trim': ValuedParameter('-', 'confirm_trim', Delimiter=' '), 
 
-            _Option(['-confirm_length','confirm_length'],'', equate=False),
+            '-confirm_penalty': ValuedParameter('-', 'confirm_penalty', Delimiter=' '), 
 
-            _Option(['-confirm_trim','confirm_trim'],'', equate=False),
+            '-confirm_score': ValuedParameter('-', 'confirm_score', Delimiter=' '), 
 
-            _Option(['-confirm_penalty','confirm_penalty'],'', equate=False),
+            '-indexwordsize': ValuedParameter('-', 'indexwordsize', Delimiter=' ')
 
-            _Option(['-confirm_score','confirm_score'],'', equate=False),
+               }
+    _command = 'phrap'
 
-            _Option(['-indexwordsize','indexwordsize'],'', equate=False),
+    def _input_as_string(self, data):
+        raise ApplicationError("Input data cannot be specified in this way"\
+        "please use the prepend function")
 
-       ]
-        AbstractCommandline.__init__(self, cmd, **kwargs)
-    def get_result_paths(self, cwd=''):
-        results = dict()
-        results['contigs'] = os.path.join(cwd,self.file +
-               '.contigs')
-        results['contigs_qual'] = os.path.join(cwd,self.file +
-               '.contigs.qual')
-        results['log'] = os.path.join(cwd,self.file +
-               '.log')
-        results['problems'] = os.path.join(cwd,self.file +
-               '.problems')
-        results['problems_qual'] = os.path.join(cwd,self.file +
-               '.problems.qual')
-        results['singlets'] = os.path.join(cwd,self.file +
-               '.siglets')
+    def _input_as_multiline_string(self, data):
+        raise ApplicationError("Input data cannot be specified in this way"\
+        "please use the prepend function")
+
+    def _input_as_lines(self, data):
+        raise ApplicationError("Input data cannot be specified in this way"\
+        "please use the prepend function")
+
+    def _input_as_path(self, data):
+        raise ApplicationError("Input data cannot be specified in this way"\
+        "please use the prepend function")
+
+    def _input_as_paths(self, data):
+        raise ApplicationError("Input data cannot be specified in this way"\
+        "please use the prepend function")
+
+    def _accept_exit_status(self, exit_status):
+        """Accept an exit status of 0 for the phrap program.
+        """
+        return exit_status == 0
+    
+    def _get_result_paths(self, data):
+        oprefix = self._positionals[0]
+        results = {
+                'contigs': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.contigs'), IsWritten=True),
+                'contigs_qual': ResultPath(Path=os.path.join(self.WorkingDir, oprefix +\
+                    '.contigs.qual'), IsWritten=True),
+                'log': ResultPath(Path=os.path.join(self.WorkingDir, oprefix +\
+                    '.log'), IsWritten=True),
+                'problems': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.problems'), IsWritten=True),
+                'problems_qual': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.problems.qual'),
+                    IsWritten=True),
+                'singlets': ResultPath(Path=os.path.join(self.WorkingDir,
+                    oprefix + '.singlets'), IsWritten=True)
+                }
         return results

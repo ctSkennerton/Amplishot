@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Amplishot by ctSkennerton</title>
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script src="javascripts/respond.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+    <link rel="stylesheet" href="stylesheets/ie.css">
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+  </head>
+  <body>
+      <div id="header">
+        <nav>
+          <li class="fork"><a href="https://github.com/ctSkennerton/Amplishot">View On GitHub</a></li>
+          <li class="downloads"><a href="https://github.com/ctSkennerton/Amplishot/zipball/master">ZIP</a></li>
+          <li class="downloads"><a href="https://github.com/ctSkennerton/Amplishot/tarball/master">TAR</a></li>
+          <li class="title">DOWNLOADS</li>
+        </nav>
+      </div><!-- end header -->
+
+    <div class="wrapper">
+
+      <section>
+        <div id="title">
+          <h1>Amplishot</h1>
+          <p>Amplicon-Shotgun</p>
+          <hr>
+          <span class="credits left">Project maintained by <a href="https://github.com/ctSkennerton">ctSkennerton</a></span>
+          <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="http://twitter.com/#!/michigangraham">mattgraham</a></span>
+        </div>
+
+        <h1>Amplishot</h1>
+
+<p>Reconstruct full-length 16S rRNA gene sequences for community profiling applications</p>
+
+<h2>Dependancies</h2>
+
+<ul>
+<li>Qiime</li>
+<li>cd-hit</li>
+<li>bowtie2</li>
+<li>pandaseq</li>
+</ul><h2>Install</h2>
+
+<p>From github run </p>
+
+<pre><code>git clone git://github.com/ctSkennerton/Amplishot.git
+cd Amplishot
+python setup.py install
+</code></pre>
+
+<p>You will need to add the installed location 
+i.e. $PREFIX/lib/python2.7/site-packages/ into your LD_LIBRARY_PATH as
+Ampliphot includes c extensions</p>
+
+<pre><code>export LD_LIBRARY_PATH="$PREFIX/lib/python2.7/site-packages/:$LD_LIBRARY_PATH"
+</code></pre>
+
+<p>to make the changes permenent add the above line into your bashrc</p>
+      </section>
+
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    
+  </body>
+</html>

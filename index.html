@@ -4,72 +4,275 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
     <title>Amplishot by ctSkennerton</title>
+
     <link rel="stylesheet" href="stylesheets/styles.css">
     <link rel="stylesheet" href="stylesheets/pygment_trac.css">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
-    <script src="javascripts/respond.js"></script>
-    <!--[if lt IE 9]>
-      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-    <![endif]-->
-    <!--[if lt IE 8]>
-    <link rel="stylesheet" href="stylesheets/ie.css">
-    <![endif]-->
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
   </head>
   <body>
-      <div id="header">
-        <nav>
-          <li class="fork"><a href="https://github.com/ctSkennerton/Amplishot">View On GitHub</a></li>
-          <li class="downloads"><a href="https://github.com/ctSkennerton/Amplishot/zipball/master">ZIP</a></li>
-          <li class="downloads"><a href="https://github.com/ctSkennerton/Amplishot/tarball/master">TAR</a></li>
-          <li class="title">DOWNLOADS</li>
-        </nav>
-      </div><!-- end header -->
-
     <div class="wrapper">
-
-      <section>
-        <div id="title">
-          <h1>Amplishot</h1>
-          <p>Amplicon-Shotgun</p>
-          <hr>
-          <span class="credits left">Project maintained by <a href="https://github.com/ctSkennerton">ctSkennerton</a></span>
-          <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="http://twitter.com/#!/michigangraham">mattgraham</a></span>
-        </div>
-
+      <header>
         <h1>Amplishot</h1>
+        <p>Amplicon-Shotgun</p>
 
-<p>Reconstruct full-length 16S rRNA gene sequences for community profiling applications</p>
+        <p class="view"><a href="https://github.com/ctSkennerton/Amplishot">View the Project on GitHub <small>ctSkennerton/Amplishot</small></a></p>
+
+
+        <ul>
+          <li><a href="https://github.com/ctSkennerton/Amplishot/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/ctSkennerton/Amplishot/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/ctSkennerton/Amplishot">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1>Amplishot: Amplicon-Shotgun</h1>
 
 <h2>Dependancies</h2>
 
 <ul>
-<li>Qiime</li>
-<li>cd-hit</li>
-<li>bowtie2</li>
-<li>pandaseq</li>
-</ul><h2>Install</h2>
+<li>
+<a href="http://qiime.org">Qiime</a> - tested only on version 1.6.0</li>
+<li>
+<a href="http://bowtie-bio.sourceforge.net/bowtie2/index.shtml">bowtie2</a> - tested with version 2.0.5</li>
+<li>  <a href="http://cd-hit.org">cd-hit</a>
+</li>
+<li>  <a href="https://github.com/neufeld/pandaseq">pandaseq</a> - test with version 2.3</li>
+<li>  <a href="http://www.phrap.org/">phrap</a> - tested with version 1.09518</li>
+</ul><h2>Installation</h2>
 
-<p>From github run </p>
+<p>You can either download the <a href="https://github.com/ctSkennerton/Amplishot">latest source code</a>
+ or a <a href="https://github.com/ctSkennerton/Amplishot/tags">particular version</a> from github.
+Once downloaded change into the Amplishot directory and run the following:</p>
 
-<pre><code>git clone git://github.com/ctSkennerton/Amplishot.git
-cd Amplishot
-python setup.py install
+<pre><code> [sudo] python setup.py install
 </code></pre>
 
-<p>You will need to add the installed location 
-i.e. $PREFIX/lib/python2.7/site-packages/ into your LD_LIBRARY_PATH as
-Ampliphot includes c extensions</p>
+<p>or if you do not have sudo on your computer use the <code>--prefix</code> option to change
+the installation directory.</p>
 
-<pre><code>export LD_LIBRARY_PATH="$PREFIX/lib/python2.7/site-packages/:$LD_LIBRARY_PATH"
+<h2>Command-line interface</h2>
+
+<p>Amplishot has a single executable called <code>amplishot</code>; you can see some basic help
+by running the command <code>amplishot -h</code>.
+The command-line options for Amplishot only offer a subset of the options that are 
+available.  Most options are changed by using a configuration file.  The Amplishot 
+configuration file is written in <a href="http://yaml.org">YAML</a>, which is a simple markup 
+language; before you try to modify the configuration file it might be helpful to 
+read up on the YAML <a href="http://yaml.org/spec/1.1/">syntax</a>.
+Command-line options and a configuration file can be used in tandum.  Any options
+specified on the command-line will <strong>overwrite</strong> the corresponding value in the
+configuration file.  If changes have been made to a configuration by using 
+command-line options, a new configuration file will be outputted to the global
+output directory with a datetime signature so that no previous configuration details
+are lost.  A new configuration file will not be outputted if there are no changes
+to the current configuration set.</p>
+
+<h3>Configuration options and their values</h3>
+
+<ul>
+<li>  <code>threads</code>: Sets the number of threads/processes to use in the Amplishot pipeline. 
+The value should be a single integer number (default: 1)</li>
+<li>  <code>log_level</code>: Changes the verbosity of logging messages.  The options from most 
+verbose to least are: DEBUG, INFO, WARN, ERROR, CRITICAL (default: INFO)</li>
+<li>  <code>log_file</code>: Give the <strong>full</strong> filepath to output all logging messages.<br>
+By default logging is output to the terminal in the STDERR stream.<br>
+</li>
+<li>  <code>output_directory</code>: This is the directory where all results will be outputted.<br>
+By default it is the current directory, symbolized by a '.' character</li>
+<li>
+<p><code>input_raw_reads</code>: This must be a list of files raw Illumina sequencing read files
+to input into Amplishot.  The format of the input reads must be a <em>list-of-lists</em>,
+which can be added to the configuration in two ways:</p>
+
+<pre><code>input_raw_reads:
+    - [/full/path/to/sample1.1.fq, /full/path/to/sample1.2.fq]
+    - [/full/path/to/sample2.1.fq, /full/path/to/sample2.2.fq]
+
+input_raw_reads:
+    - 
+        - /full/path/to/sample1.1.fq
+        - /full/path/to/sample1.2.fq
+    -
+        - /full/path/to/sample2.1.fq
+        - /full/path/to/sample2.2.fq
+</code></pre>
+</li>
+<li><p><code>pairtig_read_files</code>: Input pairtig files to use for Amplishot.  This option is
+mutually exclusive with <code>input_raw_reads</code>.  By using this option you can generate
+pairtigs outside of Amplishot</p></li>
+<li>
+<p><code>aliases</code>: Use this option to set the sample names to be used in the output files.
+By default the filename is used without the file extension.  The form of the values
+must be a YAML list specified by either:</p>
+
+<pre><code>aliases:
+    - alias1
+    - alias2
+
+aliases: [alias1, alias2]
+</code></pre>
+</li>
+<li><p><code>minimum_pairtig_length</code>: Specify the minimum length that pairtigs must be.  This 
+option has no effect if the <code>pairtig_read_files</code> option is set. (default: 350)</p></li>
+<li><p><code>pair_overlap_length</code>: The minimum number of nucleotides that two reads from a 
+pair must overlap by to generate a pairtig. (default: 30)</p></li>
+<li><p><code>mapper</code>: The name of the short read aligner used in Amplishot.  Currently only
+bowtie2 is implemented and therefore the only valid value for this option is
+bowtie</p></li>
+<li><p><code>mapper_database</code>: Give the <strong>full</strong> filepath to an index file generated by the
+short read mapper</p></li>
+<li><p><code>taxonomy_file</code>: the name of the file containing a mapping between the reference
+sequences and their taxon strings</p></li>
+<li><p><code>initial_mapping_similarity</code>: The required similarity between a reference sequence
+and a pairtig.  (default: 0.98)</p></li>
+<li><p><code>taxon_coverage</code>: list of two integer numbers that determine whether there are 
+enough reads for assembly.  The first number must be the minimum coverage (vertical
+read depth) for a taxon; the second number is the number of bases that must 
+contain the minimum coverage. (default: [2, 1000])</p></li>
+<li><p><code>read_clustering_method</code>: method of reducing excess coverage after taxonomic
+segregation but before assembly. There is currently only one option <code>cdhit</code></p></li>
+<li><p><code>read_clustering_similarity</code>: sequence similarity between two reads to be clustered
+together</p></li>
+<li><p><code>cdhit_max_memory</code>: maximum memory allowed for cdhit - does not apply to other 
+reduction methods. (default: 1000)</p></li>
+<li><p><code>assembly_method</code>: <em>de novo</em> 16S reconstruction method.  The only valid
+value is currently <code>phrap</code></p></li>
+<li><p><code>assemble_unknowns</code>: choose whether to assemble reads that do not map to any 
+reference sequence. May be <em>very slow</em> when using phrap as the assembly method.
+Valid values are: yes, no, true, false</p></li>
+<li><p><code>minimum_reconstruction_length</code>: minimum length of sequences that are defined 
+as 'full length' and used in taxonomic assignment.</p></li>
+<li><p><code>otu_clustering_method</code>: Currently the only valid value is <code>cdhit</code></p></li>
+<li><p><code>otu_clustering_similarity</code>: the similarity used for clustering full-length 
+sequences from different samples into OTUs </p></li>
+<li><p><code>normalize_otu_table</code>: output a normalized OTU table as well as non-normalized.
+Valid values are: yes, no, true, false</p></li>
+</ul><h3>Program related blocks</h3>
+
+<p>Some of the underlying programs used in Amplishot can be controlled precisely by
+specifying a <em>block</em> in the configuration file containing options specific 
+to that program.  Each of these blocks is specified with a key that is identical
+to the program name; within each block are program specific key-value pairs.<br>
+The program specific key-value pairs must be indented by 4 spaces (**not tabs**),
+this indentation must be consistent throughout the entire configuration file.
+Currently program related blocks are available for both the assembly and 
+taxonomy assignment parts of Amplishot</p>
+
+<h4>Assembly</h4>
+
+<h5>Phrap</h5>
+
+<p>Currently only Phrap is available for <em>de novo</em> assembly.  Specify extra options
+using the <code>phrap</code> key.  Any of the command-line options available in phrap 
+(listed <a href="http://www.phrap.org/phredphrap/phrap.html">here</a>) can be used as the keys
+in the phrap block, however you must not add in the dash (-) prefix for the options.
+For example to modify stringency of the assembly, you could change the scoring matrix:</p>
+
+<pre><code>phrap:
+    penalty: -9
+    gap_ext: -11
+    gap_init: -12
+    minscore: 350
 </code></pre>
 
-<p>to make the changes permenent add the above line into your bashrc</p>
+<p>Just because you can do this does not mean that you should unless you know exactly
+what you are doing or are experimenting when Amplishot is producing sub-standard
+results.  The scoring matrix and other assembly parameters used in phrap have 
+already been altered to generate accurate 16S assemblies, so the default
+settings should work well.</p>
+
+<h4>Taxonomy Assignment</h4>
+
+<p>Taxonomy assignment is handled in Amplishot after the reconstruction of full-length
+16S sequences has occurred.  There are a number of different methods for taxonomic
+assignment that include some of those available in Qiime 1.6.0. The taxonomy 
+assignment method is determined from the Amplishot configuration file with the
+<code>assign_taxonomy_method</code> key.  By default the Bowtie2 taxonomy assigner is used.
+The valid values for each classifier are shown below:</p>
+
+<ul>
+<li>
+<code>bowtie</code> for bowtie2 based assigner</li>
+<li>
+<code>blast</code> for Qiime blastall based assigner </li>
+<li>
+<code>rdp</code> for RDP classifier</li>
+<li>
+<code>mothur</code> for Mothur classifier</li>
+</ul><h4>Configuration File options</h4>
+
+<p>For all taxonomy assigners a special block can be given in the configuration file
+for specific options.  The key to this block must be the same as the value of 
+the <code>assign_taxonomy_method</code> key.  For example to use the blast taxon assigner the
+following code could be added into the configuration file:</p>
+
+<pre><code>assign_taxonomy_method: blast
+blast:
+    evalue: 1e-50
+    blast_db: /full/path/to/blast/database
+</code></pre>
+
+<h4>Options specific to all taxon assigners</h4>
+
+<ul>
+<li>
+<code>id_to_taxonomy_fp</code>: <strong>Full</strong> path to file containing a mapping between reference
+sequences and their respective taxon strings.  By default all taxon assigners will
+use the  value of the <code>taxonomy_file</code> key.  This option should only be used if 
+different reference sequence set is being used for taxonomy assignment </li>
+<li>
+<code>reference_sequences_fp</code>: <strong>Full</strong> path to file containing reference sequences</li>
+</ul><h5>Bowtie</h5>
+
+<ul>
+<li>
+<code>index</code>: <strong>Full</strong> file path to bowtie2 formatted index file for the reference sequences.<br>
+By default the bow tie taxonomic assigner will use the value of the <code>mapper_database</code> 
+key, however a different database file can be accessed  here for taxonomic assignment</li>
+<li>
+<code>threads</code>: specify the number of threads that bowtie can use </li>
+<li>
+<code>percentId</code>: The minimum percent identity that a representative sequence must map with, 
+any sequence below this threshold will not be given a taxonomy</li>
+</ul><h5>Blast</h5>
+
+<ul>
+<li>
+<code>blast_db</code>: <strong>Full</strong> file path to the file containing the blast database that must
+be formatted using the <code>formatdb</code> utility for nucleotide sequences.  Do <strong>not</strong> add in
+the file extensions usually associated with blast databases. e.g. <code>.nsq</code>, <code>.nin</code> etc.</li>
+<li>
+<code>evalue</code>: The maximum allowable e-value allowed for a given match.  If no match can
+be found below this score, then a representative sequence will not be given a
+taxonomic assignment.</li>
+</ul><h5>Mothur</h5>
+
+<ul>
+<li>
+<code>Confidence</code>: Minimum allowed confidence score for taxonomic assignment</li>
+</ul><h5>RDP</h5>
+
+<ul>
+<li>
+<code>Confidence</code>: Minimum allowed confidence score allowed for taxonomic assignment</li>
+<li>
+<code>max_memory</code>: Set the maximum memory allowed for the RDP java virtual machine</li>
+<li>
+<code>training_data_properties_fp</code>: <strong>Full</strong> path to a file containing pre-compiled 
+training data.<br>
+This option is overridden if both the <code>reference_sequences_fp</code> and 
+<code>id_to_taxonomy_fp</code> keys are set.</li>
+</ul><h3>Example Configuration file</h3>
       </section>
-
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/ctSkennerton">ctSkennerton</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
     </div>
-    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    <script src="javascripts/scale.fix.js"></script>
     
   </body>
 </html>

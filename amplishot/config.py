@@ -78,10 +78,8 @@ read_clustering_method: cdhit
 read_clustering_similarity: 0.98 # sequence similarity between two reads to be clustered together
 cdhit_max_memory: 1000 # maximum memory allowed for cdhit - does not apply to other reduction methods
 assembly_method: phrap # choose a genome assembler  
-phrap_minscore: 300 # minimum alignment score
 assemble_unknowns: false # choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)
 minimum_reconstruction_length: 1000 # minimum length of sequences that we define as 'full length'
-reconstruced_seq_file: full_length_sequences.fa
 otu_clustering_method: cdhit
 otu_clustering_similarity: 0.97 # the similarity used for clustering full-length sequences from different samples into OTUs
 normalize_otu_table: true # output a normalized OTU table as well as non-normalized
@@ -127,7 +125,7 @@ class AmplishotConfig(object):
             defaults
         """
         for key, value in vars(args).items():
-            if key in self.data:
+            if value is not None and key in self.data:
                 self.data[key] = value
 ###############################################################################
 ###############################################################################

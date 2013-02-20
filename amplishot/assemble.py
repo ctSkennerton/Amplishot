@@ -79,6 +79,25 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
             clustered_qual.write('>%s\n%s\n' % (name, qual))
     inqual.close()
 
+
+def reduce_and_assemble(taxon, assembler_params, cd_hit_params,
+        assembler_constructor,
+        suppressStderr=True, suppressStdout=True):
+    logger = multiprocessing.log_to_stderr()
+    cd_hit_reduce(taxon, **cd_hit_params)
+    process_cd_hit_results(taxon, cdhitin='reads.fa')
+
+    infile_name = 'cdhitout.fa'
+
+    ## generate overlaps - each partition
+    full_length_counter = 1
+    inst = assembler_constructor(taxon, assembler_params, infile=infile_name,
+                suppressStderr=suppressStderr,
+                suppressStdout=suppressStdout)
+    logger.debug('%s (wd: %s)', str(inst), taxon)
+    results = inst()
+    return results['contigs'].name
+
 class AssemblyWrapper(object):
     def __init__(self, assembler, config, preAssembleReduction=True,
             stdout=None, stderr=None):
@@ -125,37 +144,51 @@ class AssemblyWrapper(object):
             # dataset reduction - cd-hit - each partition
             pool = multiprocessing.Pool(processes=self.config.data['threads'])
             logging.info('clustering...')
-            for t in taxons:
-                pool.apply_async(cd_hit_reduce, (t,), dict(infile=infile_name, 
+            try:
+                assembly_params = self.config.data[self.assembler]
+            except KeyError:
+                assembly_params = None
+            cd_hit_params = dict(infile=infile_name, 
                     similarity=self.config.data['read_clustering_similarity'],
-                    maxMemory=self.config.data['cdhit_max_memory']))
+                    maxMemory=self.config.data['cdhit_max_memory'])
+            pool_results = [pool.apply_async(reduce_and_assemble,
+                (t, assembly_params, cd_hit_params, self.constructor),
+                dict(suppressStderr=self.suppressStderr,
+                suppressStdout=self.suppressStdout)) for t in taxons]
+
             pool.close()
             pool.join()
-            logging.info('assembling...')
+
+            full_length_counter = 1
+            for result in pool_results:
+                r = result.get()
+                fxparser = amplishot.parse.fastx.FastxReader(open(r))
+                for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
+                length=self.config.data['minimum_reconstruction_length']):
+                    seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
+                    self.fullLengthSeqs[seq_name] = seq
+                    full_length_counter += 1
+        else:
+
+            # generate overlaps - each partition
+            full_length_counter = 1
             for t in taxons:
-                process_cd_hit_results(t, cdhitin=infile_name)
-
-            infile_name = 'cdhitout.fa'
-
-        ## generate overlaps - each partition
-        full_length_counter = 1
-        for t in taxons:
-            try:
-                params = self.config.data[self.assembler]
-            except KeyError:
-                params = None
-            inst = self.constructor(t, params, infile=infile_name,
-                    suppressStderr=self.suppressStderr,
-                    suppressStdout=self.suppressStdout)
-            logging.debug('%s (wd: %s)', str(inst), t)
-            results = inst()
-            # collect all full-length sequences
-            fxparser = amplishot.parse.fastx.FastxReader(results['contigs'])
-            for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
-            length=self.config.data['minimum_reconstruction_length']):
-                seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
-                self.fullLengthSeqs[seq_name] = seq
-                full_length_counter += 1
+                try:
+                    params = self.config.data[self.assembler]
+                except KeyError:
+                    params = None
+                inst = self.constructor(t, params, infile=infile_name,
+                        suppressStderr=self.suppressStderr,
+                        suppressStdout=self.suppressStdout)
+                logging.debug('%s (wd: %s)', str(inst), t)
+                results = inst()
+                # collect all full-length sequences
+                fxparser = amplishot.parse.fastx.FastxReader(results['contigs'])
+                for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
+                length=self.config.data['minimum_reconstruction_length']):
+                    seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
+                    self.fullLengthSeqs[seq_name] = seq
+                    full_length_counter += 1
 
     def write(self, fp):
         for name, seq in self.fullLengthSeqs.items():

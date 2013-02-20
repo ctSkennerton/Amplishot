@@ -76,15 +76,18 @@ def demultiplex(args):
     pass
 
 
-def overlap(forward, reverse, minPairtigLen=350, minOverlap=30, stdout=None,
-        stderr=None):
-    panda = pandaseq.Pandaseq()
-    panda.Parameters['-f'].on(forward)
-    panda.Parameters['-r'].on(reverse)
-    panda.Parameters['-l'].on(minPairtigLen)
-    panda.Parameters['-o'].on(minOverlap)
-    panda.Parameters['-F'].on()
-    return panda(stdout=stdout, stderr=stderr)
+def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30):
+    pairtig_file = os.path.join(pairtig_dir,
+        os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq')
+    with open(pairtig_file, 'wb') as fp:
+        panda = pandaseq.Pandaseq()
+        panda.Parameters['-f'].on(forward)
+        panda.Parameters['-r'].on(reverse)
+        panda.Parameters['-l'].on(minPairtigLen)
+        panda.Parameters['-o'].on(minOverlap)
+        panda.Parameters['-F'].on()
+        panda(stdout=fp, stderr=None)
+    return pairtig_file
 
 
 def filter_sam(args): 
@@ -94,30 +97,40 @@ def filter_sam(args):
     good_taxons, bad_taxons = taxseg.segregate(root=args.outdir, minCount=args.taxon_width,
             minCoverage=args.taxon_depth)
     
+def make_aliases(config):
+    indata = []
+    config.data['aliases'] = []
+    for readfile in config.data['pairtig_read_files']:
+        sample_file_name =\
+        os.path.splitext(os.path.basename(readfile))[0]
+        indata.append((readfile, sample_file_name))
+        config.data['aliases'].append(sample_file_name)
+
+    return indata
 
 def pipeline(config):
     """Run all the steps of amplishot
     """
     root_dir = config.data['output_directory']
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir)
+    #if not os.path.exists(root_dir):
+    #    os.makedirs(root_dir)
 
     # generate fragment consensus sequences - pandaseq
     pairtig_dir = os.path.join(root_dir, 'pairtigs')
     if not os.path.exists(pairtig_dir):
         os.mkdir(pairtig_dir)
 
-    for forward, reverse in config.data['input_raw_reads']:
-        #forward = config.data['input_raw_reads'][i][0]
-        #reverse = config.data['input_raw_reads'][i][1]
-        logging.info('generating pairtigs for %s %s', forward, reverse)
-        pairtig_file = os.path.join(pairtig_dir,
-            os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq')
-        with open(pairtig_file, 'wb') as fp:
-            panda_out = overlap(forward, reverse,
-                    config.data['minimum_pairtig_length'],
-                    config.data['pair_overlap_length'], stdout=fp)
-        config.data['pairtig_read_files'].append(pairtig_file)
+    logging.info('generating pairtigs...')
+    panda_pool = multiprocessing.Pool(processes=config.data['threads'])
+    panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir), 
+        dict(minPairtigLen=config.data['minimum_pairtig_length'], 
+            minOverlap=config.data['pair_overlap_length']) ) for f, r in
+            config.data['input_raw_reads']]
+
+    panda_pool.close()
+    panda_pool.join()
+    for result in panda_pool_results:
+        config.data['pairtig_read_files'].append(result.get())
 
     # map overlapped fragments with bowtie
     # create the file for all the full-length seqs

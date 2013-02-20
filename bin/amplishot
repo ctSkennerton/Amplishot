@@ -197,7 +197,9 @@ def pipeline(config):
             outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
             similarity=config.data['otu_clustering_similarity'])
     rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
-            outputFilePath=os.path.join(root_dir, config.data['repset_output_file']))
+            outputFilePath=os.path.join(root_dir,
+                config.data.get('repset_output_file',
+                    'full_length_sequences.repset.fa')))
     rep_set_seqs = dict()
     with open(rep_set) as fp:
         fxparser = amplishot.parse.fastx.FastxReader(fp)
@@ -292,7 +294,6 @@ if __name__ == '__main__':
                     'the most critical messages are reported')
     common_options_parser.add_argument('--log-level', choices=['DEBUG', 'INFO',
         'WARNING', 'ERROR', 'CRITICAL'], dest='log_level',
-        default=config.data.get('log_level', 'INFO'),
         help='Set the log level')
     common_options_parser.add_argument('--log-file', dest='log_file',
             help='Change the destination of logging.')
@@ -302,7 +303,7 @@ if __name__ == '__main__':
     # pass it to the parsers that need it
     threads_parser = argparse.ArgumentParser(add_help=False)
     threads_parser.add_argument('-t', '--threads', type=int, dest='threads',
-            default=config.data.get('threads', 1), help='The number of threads to use')
+             help='The number of threads to use')
 
 #--------------------
     # top level parser for running the pipeline

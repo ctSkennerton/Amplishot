@@ -88,11 +88,11 @@ repset_output_file: full_length_sequences.repset.fa
 assign_taxonomy_method: blast
 minimum_taxon_similarity: 0.90 # sequences that fall below this cutoff will be listed as no taxonomy
 phrap:
-    '-minscore': 300
-    '-penalty': -9
-    '-gap_ext': -10
-    '-gap_init': -11
-    '-ace': True
+    minscore: 300
+    penalty: -9
+    gap_ext: -10
+    gap_init: -11
+    ace: True
 blast:
     blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
 '''

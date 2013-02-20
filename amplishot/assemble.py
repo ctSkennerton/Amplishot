@@ -39,14 +39,17 @@ import amplishot.parse.fastx
 
 def phrap_constructor( workingdir, params=None, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True):
+    if params is not None:
+        for k in params.keys():
+            if k.startswith('-'):
+                continue
+            phrap_option = '-%s' % k
+            params[phrap_option] = params[k]
+            del params[k]
+
     p = amplishot.app.phrap.Phrap(params=params, SuppressStdout=suppressStdout,
             SuppressStderr=suppressStderr, WorkingDir=workingdir,
             PrependPositionals=True)
-   # p.Parameters['-minscore'].on(300)
-   # p.Parameters['-ace'].on()
-   # p.Parameters['-penalty'].on(-9)
-   # p.Parameters['-gap_init'].on(-11)
-   # p.Parameters['-gap_ext'].on(-10)
     p.add_positional_argument(FilePath(infile))
     return p
 

@@ -144,16 +144,16 @@ def pipeline(config):
     # fix up the aliases
     indata = []
     if config.data['aliases']:
-        indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
+        if len(config.data['aliases']) != len(config.data['pairtig_read_files']):
+            logging.warn('There are a different number of aliases and input'\
+                'files. Aliases will not be used')
+            indata = make_aliases(config)
+        else:
+            indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
     else:
-        for readfile in config.data['pairtig_read_files']:
-            sample_file_name =\
-            os.path.splitext(os.path.basename(readfile))[0]
-            indata.append((readfile, sample_file_name))
-    
+        indata = make_aliases(config)
     # assembly wrapper
     wrapper = assemble.AssemblyWrapper('phrap', config)
-
     for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
         sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')

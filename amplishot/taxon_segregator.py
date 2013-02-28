@@ -35,6 +35,7 @@ import logging
 import sys
 import os
 import re
+from collections import defaultdict
 
 import amplishot.parse.sam
 import amplishot.parse.fastx
@@ -57,7 +58,7 @@ class TaxonSegregator(object):
 
     #unusual chars
     un_re = re.compile('[\s\[\]\{\}]')
-    def __init__(self, taxonfile):
+    def __init__(self, taxonfile, cutoffs=[0.8,0.87,0.92,0.98]):
         """
            taxonfile: path to a file containing the mapping between reference
                       identifiers and the taxonomy string
@@ -68,6 +69,9 @@ class TaxonSegregator(object):
         self.taxon_mapping = dict()
         self.ref_taxon_mapping = dict()
         self.taxon_format = ''
+
+        cutoffs.sort()
+        self.cutoffs = cutoffs
 
         with open(taxonfile) as fp:
             self._parse_taxon_file(fp)
@@ -171,7 +175,7 @@ class TaxonSegregator(object):
         #assume that the sequences are not greater than 1600bp
         coverage = [0]*5000
         
-        for read in self.taxon_mapping[taxon]:
+        for read in taxon:
             for i in range(read.pos, read.pos + read.qlen):
                 coverage[i] += 1
 
@@ -216,32 +220,42 @@ class TaxonSegregator(object):
         """ Delete all of the reads from the taxonomy hash
         """
         for key in self.taxon_mapping.keys():
-            del self.taxon_mapping[key][:]
+            for i in range(len(self.taxon_mapping[key])):
+                del self.taxon_mapping[key][i][:]
         self.done_segregation = False
 
-    def parse_sam(self, sam, percentId = 0.98):
+    def parse_sam(self, sam):
         """iterate through the records in a samfile and place them into 
            one of the taxonomies based on the mapping
 
            sam: an opened samfile generated with pysam 
-           percentId: The percent identity between the read and the reference
         """
         if self.done_segregation:
             raise RuntimeError, 'Segregation has already taken place.  Please\
             parse all samfiles at one and then call segregate at the end'
         samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
         for read in samf.parse():
-            if not read.is_unmapped() and read.percent_identity() >= percentId:
-                t = self.ref_taxon_mapping[read.rname]
-                try:
-                    self.taxon_mapping[t].append(read)
-                except KeyError:
-                    self.taxon_mapping[t] = [read]
+            if not read.is_unmapped():
+                percent_id = read.percent_identity() 
+                this_read_cutoff_index = 0
+                for i in range(len(self.cutoffs)):
+                    if percent_id >= self.cutoffs[i]:
+                        this_read_cutoff_index = i
+                    else:
+                        break
+
+                    t = self.ref_taxon_mapping[read.rname]
+                    try:
+                        self.taxon_mapping[t][this_read_cutoff_index].append(read)
+                    except IndexError:
+                        tmp_array = [[] * n for n in range(len(self.cutoffs))]
+                        self.taxon_mapping[t] = tmp_array
+                        self.taxon_mapping[t][this_read_cutoff_index].append(read)
             else:
                 try:
-                    self.taxon_mapping[tuple()].append(read)
+                    self.taxon_mapping[tuple()][0].append(read)
                 except KeyError:
-                    self.taxon_mapping[tuple()] = [read]
+                    self.taxon_mapping[tuple()] = [[read]]
 
 
     def segregate(self, root='root', mergeUpLevel=5, minCount=1000,
@@ -270,67 +284,71 @@ class TaxonSegregator(object):
            prefix: the name for the output files without extension (don't put
                 directories here, they are created automatically)
         """
-        complete_taxons = []
-        incomplete_taxons = []
+        complete_taxons = defaultdict(list)
+        incomplete_taxons = defaultdict(list)
         sorted_taxons = self.taxon_mapping.keys()
         sorted_taxons = sorted(sorted_taxons, reverse=True, cmp=lambda x,y: cmp(len(x), len(y)))
         for taxon_ranks in sorted_taxons:
-            if not self._check_taxon_coverage(taxon_ranks, minCount,
-                    minCoverage):
-                if len(taxon_ranks) > mergeUpLevel:
-                    new_taxon = []
-                    for i in range(len(taxon_ranks) - 1):
-                        new_taxon.append(taxon_ranks[i])
-                    
-                    t = tuple(new_taxon)
-                    try:
-                        self.taxon_mapping[t].extend(self.taxon_mapping[taxon_ranks])
-                    except KeyError:
-                        # no taxon above this level therefore no point in
-                        # deleting this taxon
-                        pass
+            for cutoff_index in range(len(self.taxon_mapping[taxon_ranks])):
+                if not self._check_taxon_coverage(self.taxon_mapping[taxon_ranks][cutoff_index],\
+                        minCount, minCoverage):
+                    if len(taxon_ranks) > mergeUpLevel:
+                        new_taxon = []
+                        for i in range(len(taxon_ranks) - 1):
+                            new_taxon.append(taxon_ranks[i])
+                        
+                        t = tuple(new_taxon)
+                        try:
+                            self.taxon_mapping[t][cutoff_index].extend(self.taxon_mapping[taxon_ranks][cutoff_index])
+                        except (IndexError, KeyError):
+                            # no taxon above this level therefore no point in
+                            # deleting this taxon
+                            pass
+                        else:
+                            del self.taxon_mapping[taxon_ranks][cutoff_index][:]
                     else:
-                        del self.taxon_mapping[taxon_ranks]
+                        incomplete_taxons[taxon_ranks].append(self.cutoffs[cutoff_index])
                 else:
-                    incomplete_taxons.append(taxon_ranks)
-            else:
-                complete_taxons.append(taxon_ranks)
-                reads = self.taxon_mapping[taxon_ranks]
+                    complete_taxons[taxon_ranks].append(self.cutoffs[cutoff_index])
+                    reads = self.taxon_mapping[taxon_ranks][cutoff_index]
 
-                dir_path = os.path.join(root, *taxon_ranks)
-                if not os.path.exists(dir_path):
-                    os.makedirs(dir_path)
+                    dir_path = os.path.join(root, *taxon_ranks)
+                    if not os.path.exists(dir_path):
+                        os.makedirs(dir_path)
 
-                fafp = None
-                qualfp = None
-                fqfp = None
-                samfp = None
-                try:
-                    if fasta:
-                        fafp = open(os.path.join(dir_path,'%s.fa' % prefix), 'w')
-                    if qual:
-                        qualfp = open(os.path.join(dir_path,'%s.fa.qual' % prefix), 'w')
-                    if fastq:
-                        fqfp = open(os.path.join(dir_path,'%s.fq' % prefix), 'w')
-                    if sam:
-                        samfp = open(os.path.join(dir_path, '%s.sam' % prefix),
-                                'w')
-
-                    for aligned_read in reads:
-                        self._sam_to_fastx(aligned_read, fasta=fafp,
-                                qual=qualfp, fastq=fqfp)
+                    fafp = None
+                    qualfp = None
+                    fqfp = None
+                    samfp = None
+                    try:
+                        if fasta:
+                            fafp = open(os.path.join(dir_path,'%s_%.2f.fa' %
+                                (prefix, self.cutoffs[cutoff_index])), 'w')
+                        if qual:
+                            qualfp = open(os.path.join(dir_path,'%s_%.2f.fa.qual' %
+                                (prefix, self.cutoffs[cutoff_index])), 'w')
+                        if fastq:
+                            fqfp = open(os.path.join(dir_path,'%s_%.2f.fq' %
+                                (prefix, self.cutoffs[cutoff_index])), 'w')
                         if sam:
-                            samfp.write('%s\n' % str(aligned_read))
+                            samfp = open(os.path.join(dir_path, '%s_%.2f.sam' %
+                                (prefix, self.cutoffs[cutoff_index])), 'w')
 
-                finally:
-                    if fafp is not None: 
-                        fafp.close()
-                    if qualfp is not None:
-                        qualfp.close()
-                    if fqfp is not None:
-                        fqfp.close()
-                    if samfp is not None:
-                        samfp.close()
+                        for aligned_read in reads:
+                            self._sam_to_fastx(aligned_read, fasta=fafp,
+                                    qual=qualfp, fastq=fqfp)
+                            if sam:
+                                samfp.write('%s\n' % str(aligned_read))
+
+                    finally:
+                        if fafp is not None: 
+                            fafp.close()
+                        if qualfp is not None:
+                            qualfp.close()
+                        if fqfp is not None:
+                            fqfp.close()
+                        if samfp is not None:
+                            samfp.close()
 
         self.done_segregation = True
         return complete_taxons, incomplete_taxons

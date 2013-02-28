@@ -34,24 +34,52 @@ import os
 from cogent.app.util import FilePath
 from cogent.app.cd_hit import CD_HIT_EST
 from amplishot.app.phrap import Phrap
+from amplishot.app.fermi import Fermi
+from amplishot.app.velvet import Velvetg, Velveth
 import amplishot.parse.fastx
 ###############################################################################
 
 def phrap_constructor( workingdir, params=None, infile='cdhitout.fa',
         suppressStdout=True, suppressStderr=True):
-    if params is not None:
-        for k in params.keys():
-            if k.startswith('-'):
-                continue
-            phrap_option = '-%s' % k
-            params[phrap_option] = params[k]
-            del params[k]
-
+    #logger = multiprocessing.log_to_stderr()
     p = amplishot.app.phrap.Phrap(params=params, SuppressStdout=suppressStdout,
             SuppressStderr=suppressStderr, WorkingDir=workingdir,
-            PrependPositionals=True)
+            PrependPositionals=True, HALT_EXEC=False)
     p.add_positional_argument(FilePath(infile))
-    return p
+    logging.debug('%s (wd: %s)' % (str(p), workingdir))
+    return p()
+
+
+def fermi_constructor(workingdir, params=None, infile='reads.fa',
+        suppressStdout=True, suppressStderr=True):
+    name = os.path.splitext(infile)[0]
+    params['prefix'] = name
+    f = Fermi(params=params, SuppressStdout=suppressStdout,
+            SuppressStderr=suppressStderr, WorkingDir=workingdir,
+            HALT_EXEC=False)
+    # FIXME:
+    # this is pretty doggy since fermi has to run make after so here I am just
+    # injecting shell commands
+    f.add_positional_argument(FilePath(infile))
+    f.add_positional_argument('| make -f -')
+    logging.debug('%s (wd: %s)' % (str(f), workingdir))
+    return f()
+
+def velvet_constructor(workingdir, params=None, infile='reads.fa',
+        suppressStdout=True, suppressStderr=True):
+    kmer_length = params['kmer_length']
+    del params['kmer_length']
+    name = os.path.splitext(infile)[0]
+    workingdir = os.path.join(workingdir,name)
+    vh = Velveth(kmer_length,  SuppressStdout=suppressStdout,
+            SuppressStderr=suppressStderr, WorkingDir=workingdir,
+            HALT_EXEC=False)
+    vh.add_category(os.path.join('..',infile))
+    vh()
+    vg = Velvetg(params=params, SuppressStdout=suppressStdout,
+            SuppressStderr=suppressStderr, WorkingDir=workingdir,
+            HALT_EXEC=False)
+    return vg()
 
 
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa', similarity=0.98, maxMemory=1000):
@@ -60,6 +88,7 @@ def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa', similarity=
     cdhit.Parameters['-o'].on(outfile)
     cdhit.Parameters['-c'].on(similarity)
     cdhit.Parameters['-M'].on(maxMemory)
+    logging.debug(cdhit.BaseCommand)
     cdhit()
 
 
@@ -83,19 +112,22 @@ def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
 def reduce_and_assemble(taxon, assembler_params, cd_hit_params,
         assembler_constructor,
         suppressStderr=True, suppressStdout=True):
-    logger = multiprocessing.log_to_stderr()
     cd_hit_reduce(taxon, **cd_hit_params)
-    process_cd_hit_results(taxon, cdhitin='reads.fa')
+    process_cd_hit_results(taxon, cdhitin=cd_hit_params['infile'],
+            cdhitout=cd_hit_params['outfile'])
 
-    infile_name = 'cdhitout.fa'
+    return assemble(taxon, assembler_params, assembler_constructor,
+            infile=cd_hit_params['outfile'],
+            suppressStderr=suppressStderr,
+                suppressStdout=suppressStdout)
 
-    ## generate overlaps - each partition
-    full_length_counter = 1
-    inst = assembler_constructor(taxon, assembler_params, infile=infile_name,
+def assemble(taxon, assembler_params,
+        assembler_constructor, infile='reads.fa',
+        suppressStderr=True, suppressStdout=True):
+    results = assembler_constructor(taxon, assembler_params,
+            infile=infile,
                 suppressStderr=suppressStderr,
                 suppressStdout=suppressStdout)
-    logger.debug('%s (wd: %s)', str(inst), taxon)
-    results = inst()
     return results['contigs'].name
 
 class AssemblyWrapper(object):
@@ -121,40 +153,55 @@ class AssemblyWrapper(object):
         self.reduce = preAssembleReduction
         self.config = config
         self.fullLengthSeqs = dict()
-        if assembler != 'phrap':
-            raise RuntimeError('only phrap is supported as an assember at the'\
-                    'moment. your choice was: %s' % assembler)
-        else:
-            self.assembler = assembler
+        self.assembler_extension = 'fa'
+        if assembler == 'fermi':
+            self.constructor = fermi_constructor
+        elif assembler == 'phrap':
             self.constructor = phrap_constructor
-            if stdout is False:
-                self.suppressStdout = True
-            else:
-                self.suppressStdout = False
+        elif assembler == 'velvet':
+            self.constructor = velvet_constructor
+        else:
+            raise RuntimeError('your choice of assembler is not supported')
 
-            if stderr is False:
-                self.suppressStderr = True
-            else:
-                self.suppressStderr = False
+        self.assembler = assembler
+        if stdout is False:
+            self.suppressStdout = True
+        else:
+            self.suppressStdout = False
+
+        if stderr is False:
+            self.suppressStderr = True
+        else:
+            self.suppressStderr = False
 
         
     def __call__(self, taxons, sampleName):
         infile_name = 'reads.fa'
+        pool = multiprocessing.Pool(processes=self.config.data['threads'])
+        pool_results = []
+        try:
+            assembly_params = self.config.data[self.assembler]
+        except KeyError:
+            assembly_params = None
+
         if self.reduce:
             # dataset reduction - cd-hit - each partition
-            pool = multiprocessing.Pool(processes=self.config.data['threads'])
             logging.info('clustering...')
-            try:
-                assembly_params = self.config.data[self.assembler]
-            except KeyError:
-                assembly_params = None
-            cd_hit_params = dict(infile=infile_name, 
-                    similarity=self.config.data['read_clustering_similarity'],
-                    maxMemory=self.config.data['cdhit_max_memory'])
-            pool_results = [pool.apply_async(reduce_and_assemble,
-                (t, assembly_params, cd_hit_params, self.constructor),
-                dict(suppressStderr=self.suppressStderr,
-                suppressStdout=self.suppressStdout)) for t in taxons]
+            for taxon, cutoffs in taxons.items():
+                for c in cutoffs:
+                    infile_name = 'reads_%.2f.%s' % (c,
+                            self.assembler_extension)
+                    outfile_name = 'cdhitout_%.2f.fa' % c
+                    
+                    cd_hit_params = dict(infile=infile_name, 
+                            outfile=outfile_name,
+                            similarity=self.config.data['read_clustering_similarity'],
+                            maxMemory=self.config.data['cdhit_max_memory'])
+
+                    pool_results.append(pool.apply_async(reduce_and_assemble,
+                        (taxon, assembly_params, cd_hit_params, self.constructor),
+                        dict(suppressStderr=self.suppressStderr,
+                        suppressStdout=self.suppressStdout)))
 
             pool.close()
             pool.join()
@@ -171,19 +218,25 @@ class AssemblyWrapper(object):
         else:
 
             # generate overlaps - each partition
+            for taxon, cutoffs in taxons.items():
+                for c in cutoffs:
+                    infile_name = 'reads_%.2f.%s' % (c,
+                            self.assembler_extension)
+                    try:
+                        params = self.config.data[self.assembler]
+                    except KeyError:
+                        params = None
+                    pool_results.append(pool.apply_async(assemble,
+                        (taxon, assembly_params, self.constructor),
+                        dict(suppressStderr=self.suppressStderr,
+                        suppressStdout=self.suppressStdout, infile=infile_name)))
+            pool.close()
+            pool.join()
+
             full_length_counter = 1
-            for t in taxons:
-                try:
-                    params = self.config.data[self.assembler]
-                except KeyError:
-                    params = None
-                inst = self.constructor(t, params, infile=infile_name,
-                        suppressStderr=self.suppressStderr,
-                        suppressStdout=self.suppressStdout)
-                logging.debug('%s (wd: %s)', str(inst), t)
-                results = inst()
-                # collect all full-length sequences
-                fxparser = amplishot.parse.fastx.FastxReader(results['contigs'])
+            for result in pool_results:
+                r = result.get()
+                fxparser = amplishot.parse.fastx.FastxReader(open(r))
                 for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
                 length=self.config.data['minimum_reconstruction_length']):
                     seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)

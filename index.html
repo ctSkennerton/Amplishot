@@ -28,19 +28,30 @@
         </ul>
       </header>
       <section>
-        <h1>Amplishot: Amplicon-Shotgun</h1>
+        <p>Currently microbial community profiling sudies rutienly use 454
+pyrosequencing to generate 10,000 - 100,000 reads from particular 
+variable regions of the 16S rRNA gene.  Unfortunately 454 pyrosequencing 
+has a number of short falls such as homopolymer errors.  Furthermore
+taxonomic resolution can be lost when using 454 pyrosequencing due
+to the smaller fragment of the 16S rRNA gene that is being analyzed.
+<em>Amplishot</em> combines amplification of the full 16S rRNA gene sequence
+with <em>de novo</em> reconstruction of full-length 16S rRNA genes from specially
+constructed "Amplishot" Illumina sequencing libraries. </p>
 
 <h2>Dependancies</h2>
 
 <ul>
-<li>
-<a href="http://qiime.org">Qiime</a> - tested only on version 1.6.0</li>
-<li>
-<a href="http://bowtie-bio.sourceforge.net/bowtie2/index.shtml">bowtie2</a> - tested with version 2.0.5</li>
-<li>  <a href="http://cd-hit.org">cd-hit</a>
-</li>
+<li>  <a href="http://qiime.org">Qiime</a> - tested only on version 1.6.0</li>
+<li>  <a href="http://bowtie-bio.sourceforge.net/bowtie2/index.shtml">bowtie2</a> - tested with version 2.0.5</li>
+<li>  <a href="http://cd-hit.org">cd-hit</a> - tested with 4.5.4</li>
 <li>  <a href="https://github.com/neufeld/pandaseq">pandaseq</a> - test with version 2.3</li>
+</ul><h3>Assembly Dependancies</h3>
+
+<p>You must have one of the following</p>
+
+<ul>
 <li>  <a href="http://www.phrap.org/">phrap</a> - tested with version 1.09518</li>
+<li>  <a href="https://github.com/lh3/fermi">fermi</a> - tested with version 1.1</li>
 </ul><h2>Installation</h2>
 
 <p>You can either download the <a href="https://github.com/ctSkennerton/Amplishot">latest source code</a>
@@ -115,6 +126,15 @@ must be a YAML list specified by either:</p>
 aliases: [alias1, alias2]
 </code></pre>
 </li>
+<li>
+<p><code>minimum_pairtig_length</code>: Specify the minimum length that pairtigs must be.  This 
+    aliases:
+        - alias1
+        - alias2</p>
+
+<pre><code>aliases: [alias1, alias2]
+</code></pre>
+</li>
 <li><p><code>minimum_pairtig_length</code>: Specify the minimum length that pairtigs must be.  This 
 option has no effect if the <code>pairtig_read_files</code> option is set. (default: 350)</p></li>
 <li><p><code>pair_overlap_length</code>: The minimum number of nucleotides that two reads from a 
@@ -126,8 +146,9 @@ bowtie</p></li>
 short read mapper</p></li>
 <li><p><code>taxonomy_file</code>: the name of the file containing a mapping between the reference
 sequences and their taxon strings</p></li>
-<li><p><code>initial_mapping_similarity</code>: The required similarity between a reference sequence
-and a pairtig.  (default: 0.98)</p></li>
+<li><p><code>mapping_similarity_cutoffs</code>: A list of required similarity between a reference sequence
+and a pairtig. Reads will be segregated into a band of similarity
+and assembled separately in that band </p></li>
 <li><p><code>taxon_coverage</code>: list of two integer numbers that determine whether there are 
 enough reads for assembly.  The first number must be the minimum coverage (vertical
 read depth) for a taxon; the second number is the number of bases that must 
@@ -139,7 +160,7 @@ together</p></li>
 <li><p><code>cdhit_max_memory</code>: maximum memory allowed for cdhit - does not apply to other 
 reduction methods. (default: 1000)</p></li>
 <li><p><code>assembly_method</code>: <em>de novo</em> 16S reconstruction method.  The only valid
-value is currently <code>phrap</code></p></li>
+values are <code>phrap</code> and  <code>fermi</code></p></li>
 <li><p><code>assemble_unknowns</code>: choose whether to assemble reads that do not map to any 
 reference sequence. May be <em>very slow</em> when using phrap as the assembly method.
 Valid values are: yes, no, true, false</p></li>
@@ -156,16 +177,24 @@ Valid values are: yes, no, true, false</p></li>
 specifying a <em>block</em> in the configuration file containing options specific 
 to that program.  Each of these blocks is specified with a key that is identical
 to the program name; within each block are program specific key-value pairs.<br>
-The program specific key-value pairs must be indented by 4 spaces (**not tabs**),
+The program specific key-value pairs must be indented by 4 spaces ( <strong>not tabs</strong> ),
 this indentation must be consistent throughout the entire configuration file.
 Currently program related blocks are available for both the assembly and 
 taxonomy assignment parts of Amplishot</p>
 
 <h4>Assembly</h4>
 
-<h5>Phrap</h5>
+<h5>Fermi</h5>
 
-<p>Currently only Phrap is available for <em>de novo</em> assembly.  Specify extra options
+<p>Specify options using the <code>fermi</code> key.</p>
+
+<ul>
+<li>  <code>kmer_length</code>: The kmer length used for assembly. The bigger the
+number the more stringent the assembly.<br>
+</li>
+</ul><h5>Phrap</h5>
+
+<p>Specify extra options
 using the <code>phrap</code> key.  Any of the command-line options available in phrap 
 (listed <a href="http://www.phrap.org/phredphrap/phrap.html">here</a>) can be used as the keys
 in the phrap block, however you must not add in the dash (-) prefix for the options.
@@ -266,6 +295,47 @@ training data.<br>
 This option is overridden if both the <code>reference_sequences_fp</code> and 
 <code>id_to_taxonomy_fp</code> keys are set.</li>
 </ul><h3>Example Configuration file</h3>
+
+<div class="highlight"><pre>    <span class="l-Scalar-Plain">---</span>
+    <span class="l-Scalar-Plain">threads</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">5</span>
+    <span class="l-Scalar-Plain">log_level</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">INFO</span>
+    <span class="l-Scalar-Plain">log_file</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">null</span>
+    <span class="l-Scalar-Plain">minimum_pairtig_length</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">350</span> <span class="c1"># minimum length of the overlapped pairs</span>
+    <span class="l-Scalar-Plain">pair_overlap_length</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">30</span> <span class="c1"># mimimum length of the overlap</span>
+    <span class="l-Scalar-Plain">mapper</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">bowtie</span> <span class="c1"># program used for read mapping </span>
+    <span class="l-Scalar-Plain">mapping_similarity_cutoffs</span><span class="p-Indicator">:</span> <span class="p-Indicator">[</span><span class="nv">0.85</span><span class="p-Indicator">,</span> <span class="nv">0.90</span><span class="p-Indicator">,</span> <span class="nv">0.95</span><span class="p-Indicator">,</span> <span class="nv">0.98</span><span class="p-Indicator">]</span> <span class="c1"># the sequence similarity required between the reference database and the reads</span>
+    <span class="l-Scalar-Plain">taxon_coverage</span><span class="p-Indicator">:</span> <span class="p-Indicator">[</span><span class="nv">2</span><span class="p-Indicator">,</span> <span class="nv">1000</span><span class="p-Indicator">]</span> <span class="c1"># list of two numbers. The first is the minimum coverage, the second is the number of bases that need to be covered</span>
+    <span class="l-Scalar-Plain">read_clustering_method</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">cdhit</span>
+    <span class="l-Scalar-Plain">read_clustering_similarity</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">0.98</span> <span class="c1"># sequence similarity between two reads to be clustered together</span>
+    <span class="l-Scalar-Plain">cdhit_max_memory</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">1000</span> <span class="c1"># maximum memory allowed for cdhit - does not apply to other reduction methods</span>
+    <span class="l-Scalar-Plain">assembly_method</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">fermi</span> <span class="c1"># choose a genome assembler  </span>
+    <span class="l-Scalar-Plain">preassemble_clustering</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">true</span>
+    <span class="l-Scalar-Plain">assemble_unknowns</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">true</span> <span class="c1"># choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)</span>
+    <span class="l-Scalar-Plain">minimum_reconstruction_length</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">1000</span> <span class="c1"># minimum length of sequences that we define as 'full length'</span>
+    <span class="l-Scalar-Plain">otu_clustering_method</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">cdhit</span>
+    <span class="l-Scalar-Plain">otu_clustering_similarity</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">0.97</span> <span class="c1"># the similarity used for clustering full-length sequences from different samples into OTUs</span>
+    <span class="l-Scalar-Plain">normalize_otu_table</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">true</span> <span class="c1"># output a normalized OTU table as well as non-normalized</span>
+    <span class="l-Scalar-Plain">read_mapping_percent</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">0.90</span> <span class="c1"># the percent identity that individual reads have to map with to be considered part of the reference</span>
+    <span class="l-Scalar-Plain">assign_taxonomy_method</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">blast</span>
+    <span class="l-Scalar-Plain">minimum_taxon_similarity</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">0.90</span> <span class="c1"># sequences that fall below this cutoff will be listed as no taxonomy</span>
+    <span class="l-Scalar-Plain">phrap</span><span class="p-Indicator">:</span>
+        <span class="l-Scalar-Plain">minscore</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">300</span>
+        <span class="l-Scalar-Plain">penalty</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">-9</span>
+        <span class="l-Scalar-Plain">gap_ext</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">-10</span>
+        <span class="l-Scalar-Plain">gap_init</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">-11</span>
+        <span class="l-Scalar-Plain">ace</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">True</span>
+    <span class="l-Scalar-Plain">fermi</span><span class="p-Indicator">:</span>
+        <span class="l-Scalar-Plain">kmer_length</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">200</span>
+</pre></div>
+
+<h3>Tips for writing config files</h3>
+
+<p>Writing out the full file path names in the configuration file can be a
+real pain.  However you can reduce the burden on yourself by taking
+advantage of some of the advanced features in the <code>vim</code> text editor.
+When in <code>INSERT</code> mode if you start typing a file path (like <code>~/</code>) and
+then press CTRL-x CTRL-f, you'll get a popup menu of file paths!! You
+can use this to quickly add in file names to your config file. </p>
       </section>
       <footer>
         <p>This project is maintained by <a href="https://github.com/ctSkennerton">ctSkennerton</a></p>

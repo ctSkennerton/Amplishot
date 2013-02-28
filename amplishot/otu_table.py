@@ -99,7 +99,7 @@ class OTUTableGenerator(object):
 
         os.remove(tmp.name)
 
-    def generate_abundance(self, reads, alias=None, threads=1):
+    def generate_abundance(self, reads, alias=None, params=None):
         """ Take in a set of reads and map them with bowtie to the rep set
         reads: should be a list of paths to files containing reads
         Would have been one of the same ones that was originally
@@ -113,7 +113,7 @@ class OTUTableGenerator(object):
 
         tmp = tempfile.TemporaryFile()
 
-        results = self._make_sam(reads, threads=threads, stdout=tmp)
+        results = self._make_sam(reads, params, stdout=tmp)
         tmp.seek(0)
         self._parse_sam(tmp)
         results.cleanUp()
@@ -132,11 +132,16 @@ class OTUTableGenerator(object):
         if observation_metadata is not None:
             self.biom_table.addObservationMetadata(observation_metadata)
     
-    def _make_sam(self, reads, threads=1, stdout=None):
+    def _make_sam(self, reads, params=None, stdout=None):
         """ Call bowtie on a combined set of full length sequences
         """
-        b = amplishot.app.bowtie.Bowtie2(params={'-x': os.path.join(self.outdir,
-            self.outprefix), '-U': reads, '-p': threads})
+        _params = {'-x': os.path.join(self.outdir,
+            self.outprefix), '-U': reads}
+        if params is None:
+            params = _params
+        else:
+            params.update(_params)
+        b = amplishot.app.bowtie.Bowtie2(params=params)
         logging.debug(str(b))
         return b(stdout=stdout)
 

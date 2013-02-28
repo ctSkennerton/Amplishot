@@ -13,6 +13,7 @@ constructed "Amplishot" Illumina sequencing libraries.
 *	[bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) - tested with version 2.0.5
 *	[cd-hit](http://cd-hit.org) - tested with 4.5.4
 *	[pandaseq](https://github.com/neufeld/pandaseq) - test with version 2.3
+
 ### Assembly Dependancies
 You must have one of the following
 *	[phrap](http://www.phrap.org/) - tested with version 1.09518

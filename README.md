@@ -222,17 +222,22 @@ This option is overridden if both the `reference_sequences_fp` and
 `id_to_taxonomy_fp` keys are set.
 
 ### Example Configuration file
+
     ---
     threads: 5
     log_level: INFO
     log_file: null
-    output_directory: "."
     minimum_pairtig_length: 350 # minimum length of the overlapped pairs
     pair_overlap_length: 30 # mimimum length of the overlap
     mapper: bowtie # program used for read mapping 
+    mapping_similarity_cutoffs: [0.85, 0.90, 0.95, 0.98] # the sequence similarity required between the reference database and the reads
+    taxon_coverage: [2, 1000] # list of two numbers. The first is the minimum coverage, the second is the number of bases that need to be covered
+    read_clustering_method: cdhit
+    read_clustering_similarity: 0.98 # sequence similarity between two reads to be clustered together
     cdhit_max_memory: 1000 # maximum memory allowed for cdhit - does not apply to other reduction methods
-    assembly_method: phrap # choose a genome assembler  
-    assemble_unknowns: false # choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)
+    assembly_method: fermi # choose a genome assembler  
+    preassemble_clustering: true
+    assemble_unknowns: true # choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)
     minimum_reconstruction_length: 1000 # minimum length of sequences that we define as 'full length'
     otu_clustering_method: cdhit
     otu_clustering_similarity: 0.97 # the similarity used for clustering full-length sequences from different samples into OTUs
@@ -246,9 +251,10 @@ This option is overridden if both the `reference_sequences_fp` and
         gap_ext: -10
         gap_init: -11
         ace: True
+    fermi:
+        kmer_length: 200
     blast:
-        blast_db: 'blast_db'
-
+        blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
 ### Tips for writing config files
 Writing out the full file path names in the configuration file can be a
 real pain.  However you can reduce the burden on yourself by taking

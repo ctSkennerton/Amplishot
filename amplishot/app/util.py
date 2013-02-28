@@ -33,16 +33,16 @@ __status__ = "Development"
 import subprocess
 import os
 import tempfile
+import gzip
 
-from cogent.app.util import CommandLineApplication, ApplicationError
+from cogent.app.util import CommandLineApplication, ApplicationError,\
+ResultPath
 from cogent.app.parameters import Parameter, FlagParameter, ValuedParameter,\
     MixedParameter, Parameters, _find_synonym, is_not_None, FilePath,\
     ParameterError
 
 class AmplishotCommandLineAppResult(dict):
-    """ Class for holding the result of a CommandLineApplication run
-        The difference is that StdOut and StdErr are not removed with __del__
-        but instead MUST be removed with cleanup()
+    """ Class for holding the result of a CommandLineApplication
     """
 
     def __init__(self,out,err,exit_status,result_paths):
@@ -63,7 +63,10 @@ class AmplishotCommandLineAppResult(dict):
         for key,value in result_paths.items():
             if value.IsWritten:
                 try:
-                    self[key] = open(value.Path)
+                    if isinstance(value, CompressedResultPath):
+                        self[key] = gzip.open(value.Path, 'rb')
+                    else:
+                        self[key] = open(value.Path)
                 except IOError:
                     raise ApplicationError, 'Could not open %s' %value.Path
             else:
@@ -83,11 +86,17 @@ class AmplishotCommandLineAppResult(dict):
         for item in file_keys:
             if self[item] is not None:
                 self[item].close()
-                remove(self[item].name)
+                os.remove(self[item].name)
 
         # remove input handler temp files
         if hasattr(self, "_input_filename"): 
-            remove(self._input_filename)
+            os.remove(self._input_filename)
+    
+    #def __del__(self):
+    #    if self['StdOut'] is not None:
+    #        os.remove(self['StdOut'].name)
+    #    if self['StdErr'] is not None:
+    #        os.remove(self['StdErr'].name)
 
 class RepeatedParameter(Parameter):
     """ A parameter with many occurances on the command line
@@ -142,6 +151,11 @@ class RepeatedParameter(Parameter):
 
     def off(self):
         self.Value = None
+
+
+class CompressedResultPath(ResultPath):
+    def __init__(self, Path, IsWritten=True):
+        super(CompressedResultPath, self).__init__(Path, IsWritten=IsWritten)
 
 
 class ExtendedCommandLineApplication(CommandLineApplication):

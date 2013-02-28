@@ -108,12 +108,11 @@ def make_aliases(config):
 
     return indata
 
+
 def pipeline(config):
     """Run all the steps of amplishot
     """
-    root_dir = config.data['output_directory']
-    #if not os.path.exists(root_dir):
-    #    os.makedirs(root_dir)
+    root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
 
     # generate fragment consensus sequences - pandaseq
     pairtig_dir = os.path.join(root_dir, 'pairtigs')
@@ -121,7 +120,12 @@ def pipeline(config):
         os.mkdir(pairtig_dir)
 
     logging.info('generating pairtigs...')
-    panda_pool = multiprocessing.Pool(processes=config.data['threads'])
+    # lets not fork unnessessary processes
+    panda_processes = len(config.data['input_raw_reads']) if\
+    len(config.data['input_raw_reads']) < config.data['threads'] else\
+    config.data['threads']
+
+    panda_pool = multiprocessing.Pool(processes=panda_processes)
     panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir), 
         dict(minPairtigLen=config.data['minimum_pairtig_length'], 
             minOverlap=config.data['pair_overlap_length']) ) for f, r in
@@ -129,9 +133,25 @@ def pipeline(config):
 
     panda_pool.close()
     panda_pool.join()
-    for result in panda_pool_results:
-        config.data['pairtig_read_files'].append(result.get())
 
+    reads_counts = []
+    for result in panda_pool_results:
+        pairtig_file = result.get()
+        with open(pairtig_file) as fp:
+            parser = amplishot.parse.fastx.FastxReader(fp)
+            read_count = 0
+            for name, seq, qual in parser.parse():
+                read_count += 1
+            reads_counts.append(read_count)
+            r = result.get()
+        config.data['pairtig_read_files'].append(os.path.abspath(r))
+
+    # take the smallest number of pairtigs and round down to the nearest 100
+    if len(reads_counts) > 1:
+        x = min(reads_counts)
+        normalized_read_count = x if x % 100 == 0 else x - 100 - x % 100
+    else:
+        normalized_read_count = reads_counts[0]
     # map overlapped fragments with bowtie
     # create the file for all the full-length seqs
     full_length_seqs =\
@@ -139,7 +159,8 @@ def pipeline(config):
         config.data.get('reconstruced_seq_file', 'full_length_sequences.fa')), 'w')
 
     # taxonomy assigner
-    taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'])
+    taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'],
+            cutoffs=config.data['mapping_similarity_cutoffs'])
     
     # fix up the aliases
     indata = []
@@ -153,7 +174,8 @@ def pipeline(config):
     else:
         indata = make_aliases(config)
     # assembly wrapper
-    wrapper = assemble.AssemblyWrapper('phrap', config)
+    wrapper = assemble.AssemblyWrapper(config.data['assembly_method'], config,
+            preAssembleReduction=config.data['preassemble_clustering'])
     for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
         sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
@@ -182,12 +204,15 @@ def pipeline(config):
             logging.info('There are %i taxons suitable for assembly'\
                     ' and %i taxons with incomplete coverage',
                     len(good_taxons), len(bad_taxons))
-            if config.data['assemble_unknowns']:
-                good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons]
-            else:
-                good_taxons = [os.path.join(taxon_root, *x) for x in good_taxons if x != ()]
+
+            if good_taxons.has_key(()) and not config.data['assemble_unknowns']:
+                del good_taxons[()]
+
+            taxons_for_assembly = {}
+            for taxon, cutoffs in good_taxons.items():
+                taxons_for_assembly[os.path.join(taxon_root, *taxon)] = cutoffs
             
-            wrapper(good_taxons, samplename)
+            wrapper(taxons_for_assembly, samplename)
 
     wrapper.write(full_length_seqs)
 
@@ -228,9 +253,10 @@ def pipeline(config):
     abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
             root_dir)
     #generate abundance based on coverage and create OTU table
+    _params = {'-p': config.data['threads'], '-u': normalized_read_count}
     for read_file, sample_name in indata:
         abundance.generate_abundance(read_file, alias=sample_name,
-                threads=config.data['threads'])
+                params=_params)
     
     abundance.generate_biom_table()
     abundance.add_metadata(observation_metadata=observation_metadata)
@@ -245,11 +271,14 @@ def pipeline(config):
     logging.info('Done.')
 
 def write_config(config):
+    # check for absolute paths; change them if they are not
+    config.data['input_raw_reads'] = [[os.path.abspath(e) for e in r] for r in\
+            config.data['input_raw_reads']]
     current_time = time.strftime('%Y%m%d%H%M%S')
-    outfp = os.path.join(root_dir, 'Amplishot_%s_config.yml' %
+    outfp = os.path.join(config.data['output_directory'], 'Amplishot_%s_config.yml' %
             current_time)
     with open(outfp, 'w') as fp:
-        fp.write(config_str)
+        fp.write(str(config))
 
 
 def check_config_and_set_output(args, config):

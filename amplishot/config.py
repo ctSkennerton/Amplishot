@@ -72,12 +72,14 @@ mapper: bowtie # program used for read mapping
 mapper_database: file.index # path to file of mapper 
 sam_file: initial_mapping.sam
 taxonomy_file: file.tab # path to the file containing taxonomy for the reference sequences 
+mapping_similarity_cutoffs: [0.88, 0.92, 0.94, 0.98]
 initial_mapping_similarity: 0.98 # the sequence similarity required between the reference database and the reads
 taxon_coverage: [2, 1000] # list of two numbers. The first is the minimum coverage, the second is the number of bases that need to be covered
 read_clustering_method: cdhit
 read_clustering_similarity: 0.98 # sequence similarity between two reads to be clustered together
 cdhit_max_memory: 1000 # maximum memory allowed for cdhit - does not apply to other reduction methods
 assembly_method: phrap # choose a genome assembler  
+preassemble_clustering: true
 assemble_unknowns: false # choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)
 minimum_reconstruction_length: 1000 # minimum length of sequences that we define as 'full length'
 otu_clustering_method: cdhit

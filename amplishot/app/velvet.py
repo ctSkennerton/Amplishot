@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 from cogent.app.parameters import FlagParameter, ValuedParameter, ParameterError
-from cogent.app.util import CommandLineApplication
+from cogent.app.util import CommandLineApplication, ResultPath
 from cogent.util.misc import app_path
-from os.path import exists
+from os.path import exists, join
 import subprocess
 import re
 
@@ -84,8 +84,6 @@ class Velveth(Velvet):
        mapping of each of the category's options
     """
 
-    _categories = []
-    _category_counts = {'short': 1, 'shortPaired': 1}
     _kmers = ""
     _parameters = {
         '-strand_specific': FlagParameter('-', 'strand_specific'),
@@ -103,14 +101,16 @@ class Velveth(Velvet):
     def __init__(self,kmer, params=None,InputHandler=None,SuppressStderr=None,\
         SuppressStdout=None, WorkingDir=None, TmpDir='/tmp', \
         TmpNameLen=20, HALT_EXEC=False):
-        if kmer > self._max_kmer_length:
-            raise VelvetError, "the kmer length (%i) in greater than allowed by %s (%i)"\
-                % (kmer, self._command, self._max_kmer_length)
-        self.Kmer = kmer
         super(Velveth,self).__init__(params=params,
                 InputHandler=InputHandler, SuppressStderr=SuppressStderr,
                 SuppressStdout=SuppressStdout,  WorkingDir=WorkingDir,
                 TmpDir=TmpDir, TmpNameLen=TmpNameLen, HALT_EXEC=HALT_EXEC)
+        if kmer > self._max_kmer_length:
+            raise VelvetError, "the kmer length (%i) in greater than allowed by %s (%i)"\
+                % (kmer, self._command, self._max_kmer_length)
+        self.Kmer = kmer
+        self._categories = []
+        self._category_counts = {'short': 1, 'shortPaired': 1}
 
     def _accept_exit_status(self, exit_status):
         """Accept an exit status of 0 for the velveth program.
@@ -136,7 +136,6 @@ class Velveth(Velvet):
         command_parts.append(str(self.WorkingDir))
         command_parts.append(str(self.Kmer))
         for category in self._categories:
-            print category
             command_parts.append(self._command_delimiter.join(filter(\
                     None,(map(str, category)))))
 
@@ -224,6 +223,34 @@ class Velvetg(Velvet):
         '-conserveLong': ValuedParameter('-', 'conserveLong', Delimiter=' '),
         '-shortMatePaired': ValuedParameter('-', 'shortMatePaired', Delimiter=' '),
         }
+    _synonyms = {
+        'cov_cutoff': '-cov_cutoff',
+        'ins_length': '-ins_length',
+        'read_trkg': '-read_trkg',
+        'min_contig_lgth': '-min_contig_lgth',
+        'amos_file': '-amos_file',
+        'exp_cov': '-exp_cov',
+        'long_cov_cutoff': '-long_cov_cutoff',
+        'ins_length_long': '-ins_length_long',
+        'ins_length_long_sd': '-ins_length_long_sd',
+        'ins_length_sd': '-ins_length_sd',
+        'scaffolding': '-scaffolding',
+        'max_branch_length': '-max_branch_length',
+        'max_divergence': '-max_divergence',
+        'max_gap_count': '-max_gap_count',
+        'min_pair_count': '-min_pair_count',
+        'max_coverage': '-max_coverage',
+        'coverage_mask': '-coverage_mask',
+        'long_mult_cutoff': '-long_mult_cutoff',
+        'unused_reads': '-unused_reads',
+        'alignments': '-alignments',
+        'exportFiltered': '-exportFiltered',
+        'clean': '-clean',
+        'very_clean': '-very_clean',
+        'paired_exp_fraction': '-paired_exp_fraction',
+        'conserveLong': '-conserveLong',
+        'shortMatePaired': '-shortMatePaired',
+        }
     _command = 'velvetg'
     def __init__(self,params=None,InputHandler=None,SuppressStderr=None,\
         SuppressStdout=None, WorkingDir=None, TmpDir='/tmp', \
@@ -285,7 +312,7 @@ class Velvetg(Velvet):
             out_files['unused_reads'] = 'UnusedReads.fa'
 
         for name, outfile in out_files.items():
-            result[name] = ResultPath(Path=self.WorkingDir+outfile,
+            result[name] = ResultPath(Path=join(self.WorkingDir,outfile),
                     IsWritten=True)
 
         return result

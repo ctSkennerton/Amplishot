@@ -136,6 +136,101 @@ class Phrap(ExtendedCommandLineApplication):
             '-indexwordsize': ValuedParameter('-', 'indexwordsize', Delimiter=' ')
 
                }
+    _synonyms = {
+            'penalty': '-penalty',
+
+            'gap_init': '-gap_init',
+
+            'gap_ext': '-gap_ext',
+
+            'ins_gap_ext': '-ins_gap_ext',
+
+            'del_gap_ext': '-del_gap_ext',
+
+            'matrix': '-matrix',
+
+            'raw': '-raw',
+
+            'minmatch': '-minmatch',
+
+            'maxmatch': '-maxmatch',
+
+            'max_group_size': '-max_group_size',
+
+            'word_raw': '-word_raw',
+
+            'bandwidth': '-bandwidth',
+
+            'minscore': '-minscore',
+
+            'vector_bound': '-vector_bound',
+
+            'default_qual': '-default_qual',
+
+            'subclone_delim': '-subclone_delim',
+
+            'n_delim': '-n_delim',
+
+            'group_delim': '-group_delim',
+
+            'trim_start': '-trim_start',
+            
+            'forcelevel': '-forcelevel',
+
+            'bypasslevel': '-bypasslevel',
+            
+            'maxgap': '-maxgap',
+            
+            'repeat_stringency': '-repeat_stringency',
+
+            'revise_greedy': '-revise_greedy',
+
+            'shatter_greedy': '-shatter_greedy',
+
+            'preassemble': '-preassemble',
+
+            'force_high': '-force_high',
+
+            'node_seg': '-node_seg',
+
+            'node_space': '-node_space',
+
+            'tags': '-tags',
+
+            'screen': '-screen',
+
+            'old_ace': '-old_ace',
+
+            'new_ace': '-new_ace',
+
+            'ace': '-ace',
+
+            'view': '-view',
+
+            'qual_show': '-qual_show',
+
+            'print_extraneous_matches': '-print_extraneous_matches',
+
+            'retain_duplicates': '-retain_duplicates',
+
+            'max_subclone_size': '-max_subclone_size',
+
+            'trim_penalty': '-trim_penalty',
+
+            'trim_score': '-trim_score',
+
+            'trim_qual': '-trim_qual',
+
+            'confirm_length': '-confirm_length',
+
+            'confirm_trim': '-confirm_trim',
+
+            'confirm_penalty': '-confirm_penalty',
+
+            'confirm_score': '-confirm_score',
+
+            'indexwordsize': '-indexwordsize',
+            }
     _command = 'phrap'
 
     def _input_as_string(self, data):

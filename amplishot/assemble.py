@@ -23,7 +23,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -54,6 +54,8 @@ def fermi_constructor(workingdir, params=None, infile='reads.fa',
         suppressStdout=True, suppressStderr=True):
     name = os.path.splitext(infile)[0]
     params['prefix'] = name
+    params['split_build_indexing'] = True
+    params['original_fmd_algorithm'] = True
     f = Fermi(params=params, SuppressStdout=suppressStdout,
             SuppressStderr=suppressStderr, WorkingDir=workingdir,
             HALT_EXEC=False)

@@ -24,7 +24,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -42,6 +42,7 @@ class Fermi(ExtendedCommandLineApplication):
             '-c': FlagParameter('-', 'c'),
             '-P': FlagParameter('-', 'P'),
             '-B': FlagParameter('-', 'B'),
+            '-D': FlagParameter('-', 'D'),
             '-e': ValuedParameter('-', 'e', Delimiter=' ', IsPath=True),
             '-p': ValuedParameter('-', 'p', Delimiter=' ', Value='fmdef'),
             '-t': ValuedParameter('-', 't', Delimiter=' '),

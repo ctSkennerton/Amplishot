@@ -2,7 +2,7 @@ from distutils.core import setup, Extension
 
 setup(
     name='Amplishot',
-    version='0.3.1',
+    version='0.3.2',
     author='Connor Skennerton',
     author_email='c.tkennerton@gmail.com',
     packages=['amplishot', 'amplishot.test', 'amplishot.search',

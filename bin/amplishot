@@ -220,62 +220,67 @@ def pipeline(config):
             
             wrapper(taxons_for_assembly, samplename)
 
-    # fix up the orientation of the full-length sequences to they are all in
-    # the forward direction then write them to file
-    orientate(wrapper.fullLengthSeqs)
-    wrapper.write(full_length_seqs)
+    # check to see if there are any full length sequences
+    # if not we finish here
+    if len(wrapper.fullLengthSeqs) < 1:
+        logging.warn("No 16S reconstructions could be made")
+    else:
+        # fix up the orientation of the full-length sequences to they are all in
+        # the forward direction then write them to file
+        orientate(wrapper.fullLengthSeqs)
+        wrapper.write(full_length_seqs)
 
-    full_length_seqs.close()
-    # pick OTUs and representative set
-    out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
-            outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
-            similarity=config.data['otu_clustering_similarity'])
-    rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
-            outputFilePath=os.path.join(root_dir,
-                config.data.get('repset_output_file',
-                    'full_length_sequences.repset.fa')))
-    rep_set_seqs = dict()
-    with open(rep_set) as fp:
-        fxparser = amplishot.parse.fastx.FastxReader(fp)
-        for name, seq, qual in fxparser.parse():
-            rep_set_seqs[name] = seq
+        full_length_seqs.close()
+        # pick OTUs and representative set
+        out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
+                outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
+                similarity=config.data['otu_clustering_similarity'])
+        rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
+                outputFilePath=os.path.join(root_dir,
+                    config.data.get('repset_output_file',
+                        'full_length_sequences.repset.fa')))
+        rep_set_seqs = dict()
+        with open(rep_set) as fp:
+            fxparser = amplishot.parse.fastx.FastxReader(fp)
+            for name, seq, qual in fxparser.parse():
+                rep_set_seqs[name] = seq
 
-    logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
-    
-    #assign taxonomy
-    taxonomy_map = assign_taxonomy.assign_taxonomy(config.data['assign_taxonomy_method'],
-            rep_set, config)
+        logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
+        
+        #assign taxonomy
+        taxonomy_map = assign_taxonomy.assign_taxonomy(config.data['assign_taxonomy_method'],
+                rep_set, config)
 
-    observation_metadata = defaultdict(dict)
-    score_field_name = 'confidence'
-    if config.data['assign_taxonomy_method'] == 'blast':
-        score_field_name = 'evalue'
-    elif config.data['assign_taxonomy_method'] == 'bowtie':
-        score_field_name = 'similarity'
-    for otu, metadata in taxonomy_map.items():
-        observation_metadata[otu]['taxonomy'] = metadata[0].split('; ')
-        observation_metadata[otu][score_field_name] = metadata[1]
+        observation_metadata = defaultdict(dict)
+        score_field_name = 'confidence'
+        if config.data['assign_taxonomy_method'] == 'blast':
+            score_field_name = 'evalue'
+        elif config.data['assign_taxonomy_method'] == 'bowtie':
+            score_field_name = 'similarity'
+        for otu, metadata in taxonomy_map.items():
+            observation_metadata[otu]['taxonomy'] = metadata[0].split('; ')
+            observation_metadata[otu][score_field_name] = metadata[1]
 
-    logging.info('generating OTU table in biom format...')
-    
-    # create Bowtie database from representative set
-    abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
-            root_dir)
-    #generate abundance based on coverage and create OTU table
-    _params = {'-p': config.data['threads'], '-u': normalized_read_count}
-    for read_file, sample_name in indata:
-        abundance.generate_abundance(read_file, alias=sample_name,
-                params=_params)
-    
-    abundance.generate_biom_table()
-    abundance.add_metadata(observation_metadata=observation_metadata)
-    with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
-        fp.write(str(abundance))
-    
-    if config.data['normalize_otu_table']:
-        abundance.normalize()
-        with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
+        logging.info('generating OTU table in biom format...')
+        
+        # create Bowtie database from representative set
+        abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
+                root_dir)
+        #generate abundance based on coverage and create OTU table
+        _params = {'-p': config.data['threads'], '-u': normalized_read_count}
+        for read_file, sample_name in indata:
+            abundance.generate_abundance(read_file, alias=sample_name,
+                    params=_params)
+        
+        abundance.generate_biom_table()
+        abundance.add_metadata(observation_metadata=observation_metadata)
+        with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
             fp.write(str(abundance))
+        
+        if config.data['normalize_otu_table']:
+            abundance.normalize()
+            with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
+                fp.write(str(abundance))
 
     logging.info('Done.')
 

@@ -25,7 +25,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2012-2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -46,11 +46,12 @@ from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble,\
         conserved_sequences
-from amplishot.app import bowtie,pandaseq
+from amplishot.app import bowtie, pandaseq
 from amplishot.config import AmplishotConfig
 from cogent.app.cd_hit import CD_HIT_EST
 from cogent.app.util import FilePath
 ###############################################################################
+
 
 def map_to_reference(params=None, stderr=None,
         stdout=None):
@@ -63,6 +64,7 @@ def map_to_reference(params=None, stderr=None,
             SuppressStdout=True)
     logging.debug(str(b))
     return b(stderr=stderr, stdout=stdout)
+
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     """Call the taxon segregator and return a list of tuples of taxonomies that
@@ -91,13 +93,14 @@ def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30):
     return pairtig_file
 
 
-def filter_sam(args): 
+def filter_sam(args):
     taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
     for samfile in args.sam:
         taxseg.parse_sam(samfile, args.percentid)
-    good_taxons, bad_taxons = taxseg.segregate(root=args.outdir, minCount=args.taxon_width,
+    good_taxons, bad_taxons = taxseg.segregate(root=args.outdir,
+            minCount=args.taxon_width,
             minCoverage=args.taxon_depth)
-    
+
 def make_aliases(config):
     indata = []
     config.data['aliases'] = []
@@ -115,43 +118,57 @@ def orientate(fullLengthSeqs):
     for name in fullLengthSeqs.keys():
         fullLengthSeqs[name] = cs.orientate(fullLengthSeqs[name])
 
+
+def count_reads_in_pairtig_file(fp):
+    parser = amplishot.parse.fastx.FastxReader(fp)
+    read_count = 0
+    for name, seq, qual in parser.parse():
+        read_count += 1
+    return read_count
+
+
+def generate_pairtigs(config, root_dir):
+    reads_counts = []
+    if len(config.data['pairtig_read_files']) > 0:
+        for pairtig_file in config.data['pairtig_read_files']:
+            with open(pairtig_file) as fp:
+                reads_counts.append(count_reads_in_pairtig_file(fp))
+    else:
+        pairtig_dir = os.path.join(root_dir, 'pairtigs')
+        if not os.path.exists(pairtig_dir):
+            os.mkdir(pairtig_dir)
+
+        logging.info('generating pairtigs...')
+        # lets not fork unnessessary processes
+        panda_processes = len(config.data['input_raw_reads']) if\
+        len(config.data['input_raw_reads']) < config.data['threads'] else\
+        config.data['threads']
+
+        panda_pool = multiprocessing.Pool(processes=panda_processes)
+        panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir),
+            dict(minPairtigLen=config.data['minimum_pairtig_length'],
+                minOverlap=config.data['pair_overlap_length']) ) for f, r in
+                config.data['input_raw_reads']]
+
+        panda_pool.close()
+        panda_pool.join()
+
+        for result in panda_pool_results:
+            pairtig_file = result.get()
+            with open(pairtig_file) as fp:
+                reads_counts.append(count_reads_in_pairtig_file(fp))
+                r = result.get()
+            config.data['pairtig_read_files'].append(os.path.abspath(r))
+    return reads_counts
+
+
 def pipeline(config):
     """Run all the steps of amplishot
     """
     root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
 
     # generate fragment consensus sequences - pandaseq
-    pairtig_dir = os.path.join(root_dir, 'pairtigs')
-    if not os.path.exists(pairtig_dir):
-        os.mkdir(pairtig_dir)
-
-    logging.info('generating pairtigs...')
-    # lets not fork unnessessary processes
-    panda_processes = len(config.data['input_raw_reads']) if\
-    len(config.data['input_raw_reads']) < config.data['threads'] else\
-    config.data['threads']
-
-    panda_pool = multiprocessing.Pool(processes=panda_processes)
-    panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir), 
-        dict(minPairtigLen=config.data['minimum_pairtig_length'], 
-            minOverlap=config.data['pair_overlap_length']) ) for f, r in
-            config.data['input_raw_reads']]
-
-    panda_pool.close()
-    panda_pool.join()
-
-    reads_counts = []
-    for result in panda_pool_results:
-        pairtig_file = result.get()
-        with open(pairtig_file) as fp:
-            parser = amplishot.parse.fastx.FastxReader(fp)
-            read_count = 0
-            for name, seq, qual in parser.parse():
-                read_count += 1
-            reads_counts.append(read_count)
-            r = result.get()
-        config.data['pairtig_read_files'].append(os.path.abspath(r))
-
+    reads_counts = generate_pairtigs(config, root_dir)
     # take the smallest number of pairtigs and round down to the nearest 100
     if len(reads_counts) > 1:
         x = min(reads_counts)
@@ -161,13 +178,13 @@ def pipeline(config):
     # map overlapped fragments with bowtie
     # create the file for all the full-length seqs
     full_length_seqs =\
-    open(os.path.join(root_dir, 
+    open(os.path.join(root_dir,
         config.data.get('reconstruced_seq_file', 'full_length_sequences.fa')), 'w')
 
     # taxonomy assigner
     taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'],
             cutoffs=config.data['mapping_similarity_cutoffs'])
-    
+
     # fix up the aliases
     indata = []
     if config.data['aliases']:
@@ -198,8 +215,8 @@ def pipeline(config):
         taxseg.parse_sam(open(sample_mapping_file))
         bowtie_results.cleanUp()
 
-        good_taxons, bad_taxons = taxseg.segregate(root=taxon_root, 
-                minCount=config.data['taxon_coverage'][1], 
+        good_taxons, bad_taxons = taxseg.segregate(root=taxon_root,
+                minCount=config.data['taxon_coverage'][1],
                 minCoverage=config.data['taxon_coverage'][0],
                 sam=True)
         taxseg.clear()
@@ -217,7 +234,7 @@ def pipeline(config):
             taxons_for_assembly = {}
             for taxon, cutoffs in good_taxons.items():
                 taxons_for_assembly[os.path.join(taxon_root, *taxon)] = cutoffs
-            
+
             wrapper(taxons_for_assembly, samplename)
 
     # check to see if there are any full length sequences
@@ -227,6 +244,7 @@ def pipeline(config):
     else:
         # fix up the orientation of the full-length sequences to they are all in
         # the forward direction then write them to file
+        logging.info("Orientating full-length sequences...")
         orientate(wrapper.fullLengthSeqs)
         wrapper.write(full_length_seqs)
 
@@ -246,7 +264,7 @@ def pipeline(config):
                 rep_set_seqs[name] = seq
 
         logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
-        
+
         #assign taxonomy
         taxonomy_map = assign_taxonomy.assign_taxonomy(config.data['assign_taxonomy_method'],
                 rep_set, config)
@@ -262,7 +280,7 @@ def pipeline(config):
             observation_metadata[otu][score_field_name] = metadata[1]
 
         logging.info('generating OTU table in biom format...')
-        
+
         # create Bowtie database from representative set
         abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
                 root_dir)
@@ -271,12 +289,12 @@ def pipeline(config):
         for read_file, sample_name in indata:
             abundance.generate_abundance(read_file, alias=sample_name,
                     params=_params)
-        
+
         abundance.generate_biom_table()
         abundance.add_metadata(observation_metadata=observation_metadata)
         with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
             fp.write(str(abundance))
-        
+
         if config.data['normalize_otu_table']:
             abundance.normalize()
             with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
@@ -303,7 +321,7 @@ def check_config_and_set_output(args, config):
     config.populate_from_commandline(args)
     try:
         root_dir = config.data['output_directory']
-    except KeyError: 
+    except KeyError:
         root_dir = config.data['output_directory'] = os.getcwd()
 
     if not os.path.exists(root_dir):
@@ -355,13 +373,13 @@ if __name__ == '__main__':
             prog='amplishot',
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=textwrap.dedent("""\
-            %(prog)s is a pipeline for reconstructing full length 16S sequences 
+            %(prog)s is a pipeline for reconstructing full length 16S sequences
             from specially prepared 'amplishot' libraries.
-            
+
             There are two ways to run amplishot:
-            1. First is to perform each step individually using the subcommands 
+            1. First is to perform each step individually using the subcommands
             listed at the bottom of this help message.
-            
+
             2. The other way is as a pipline, which will take the
             raw reads from the sequencer and give you back full-length 16S
             sequences.  If you want to use the pipline simply leave out the
@@ -430,7 +448,7 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=numeric_level,
             format='%(levelname)s\t%(asctime)s\t%(message)s')
-    
+
     if config.data['log_file'] is not None:
         logging.basicConfig(filename=config.data['log_file'])
 

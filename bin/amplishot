@@ -117,6 +117,8 @@ def orientate(fullLengthSeqs):
     cs = conserved_sequences.ConservedSequences()
     for name in fullLengthSeqs.keys():
         fullLengthSeqs[name] = cs.orientate(fullLengthSeqs[name])
+    
+    return fullLengthSeqs
 
 
 def count_reads_in_pairtig_file(fp):
@@ -244,9 +246,14 @@ def pipeline(config):
     else:
         # fix up the orientation of the full-length sequences to they are all in
         # the forward direction then write them to file
-        logging.info("Orientating full-length sequences...")
-        orientate(wrapper.fullLengthSeqs)
-        wrapper.write(full_length_seqs)
+        #logging.info("Orientating full-length sequences...")
+        #wrapper.fullLengthSeqs = orientate(wrapper.fullLengthSeqs)
+        if len(wrapper.fullLengthQuals):
+            flq = open(full_length_seqs.name + '.qual', 'w')
+            wrapper.write(full_length_seqs, qfp=flq)
+            flq.close()
+        else:
+            wrapper.write(full_length_seqs)
 
         full_length_seqs.close()
         # pick OTUs and representative set
@@ -317,6 +324,8 @@ def check_config_and_set_output(args, config):
     if args.config is not None:
         config.populate_from_config_file(open(args.config))
         initial_config_str = str(config)
+    else:
+        initial_config_str = ''
 
     config.populate_from_commandline(args)
     try:

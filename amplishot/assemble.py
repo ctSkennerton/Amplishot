@@ -155,6 +155,7 @@ class AssemblyWrapper(object):
         self.reduce = preAssembleReduction
         self.config = config
         self.fullLengthSeqs = dict()
+        self.fullLengthQuals = dict()
         self.assembler_extension = 'fa'
         if assembler == 'fermi':
             self.constructor = fermi_constructor
@@ -211,12 +212,25 @@ class AssemblyWrapper(object):
             full_length_counter = 1
             for result in pool_results:
                 r = result.get()
+                have_qual = False
+                if os.path.exists(r + '.qual'):
+                    have_qual = True
+                    qual_names = dict()
                 fxparser = amplishot.parse.fastx.FastxReader(open(r))
                 for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
                 length=self.config.data['minimum_reconstruction_length']):
                     seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
                     self.fullLengthSeqs[seq_name] = seq
+                    if have_qual:
+                        qual_names[name] = seq_name
+                    logging.debug("Assigning %s from %s", seq_name, r)
                     full_length_counter += 1
+                    
+                if have_qual:
+                    qualparser = amplishot.parse.fastx.QualityReader(open(r + '.qual'))
+                    for name, qual in qualparser.parse():
+                        if name in qual_names:
+                            self.fullLengthQuals[qual_names[name]] = qual
         else:
 
             # generate overlaps - each partition
@@ -238,13 +252,29 @@ class AssemblyWrapper(object):
             full_length_counter = 1
             for result in pool_results:
                 r = result.get()
+                have_qual = False
+                if os.path.exists(r + '.qual'):
+                    have_qual = True
+                    qual_names = dict()
                 fxparser = amplishot.parse.fastx.FastxReader(open(r))
                 for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
                 length=self.config.data['minimum_reconstruction_length']):
                     seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
                     self.fullLengthSeqs[seq_name] = seq
+                    if have_qual:
+                        qual_names[name] = seq_name
+                    logging.debug("Assigning %s from %s", seq_name, r)
                     full_length_counter += 1
+                
+                if have_qual:
+                    qualparser = amplishot.parse.fastx.QualityReader(open(r + '.qual'))
+                    for name, qual in qualparser.parse():
+                        if name in qual_names:
+                            self.fullLengthQuals[qual_names[name]] = qual
 
-    def write(self, fp):
+
+    def write(self, fp, qfp = None):
         for name, seq in self.fullLengthSeqs.items():
             fp.write('>%s\n%s\n' %(name, seq))
+            if qfp is not None:
+                qfp.write('>%s\n%s\n' % (name, self.fullLengthQuals[name]))

@@ -278,10 +278,12 @@ def pipeline(config):
 
         observation_metadata = defaultdict(dict)
         score_field_name = 'confidence'
+        
         if config.data['assign_taxonomy_method'] == 'blast':
             score_field_name = 'evalue'
         elif config.data['assign_taxonomy_method'] == 'bowtie':
             score_field_name = 'similarity'
+
         for otu, metadata in taxonomy_map.items():
             observation_metadata[otu]['taxonomy'] = metadata[0].split('; ')
             observation_metadata[otu][score_field_name] = metadata[1]

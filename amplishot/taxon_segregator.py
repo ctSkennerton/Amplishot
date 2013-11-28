@@ -45,6 +45,23 @@ from amplishot.util import reverse_complement
 ###############################################################################
 ###############################################################################
 ###############################################################################
+class Cluster (object):
+    """Holding class for information about a cluster of reads
+    """
+    def __init__(self, _ref, _cutoff, _reads):
+        """
+            _ref: ggID for the reference sequence that this cluster is formed
+            around
+            _cutoff: The mapping cutoff for reads to the reference sequence in
+            the original mapping
+            _reads: a list of AlignedRead objects that form the cluster
+        """
+        super(Cluster, self).__init__()
+        self.ref = _ref
+        self.cutoff = _cutoff
+        self.reads = _reads
+
+
 class TaxonSegregator(object):
     """Take a taxonomy and a samfile and segregate the reads into their taxonomic
        divisions
@@ -78,6 +95,10 @@ class TaxonSegregator(object):
 
         cutoffs.sort()
         self.cutoffs = cutoffs
+        
+        for i in self.cutoffs:
+            self.taxon_mapping[i] = {}
+        self.taxon_mapping[-1] = {}
 
         with open(taxonfile) as fp:
             self._parse_taxon_file(fp)
@@ -148,7 +169,7 @@ class TaxonSegregator(object):
         """
         taxon_divisions = filter(None, taxon_divisions)
         t = tuple(taxon_divisions)
-        self.taxon_mapping[t] = []
+        #self.taxon_mapping[t] = []
         self.ref_taxon_mapping[refid] = t        
 
     def _parse_taxon_file(self, taxonfp):
@@ -225,7 +246,7 @@ class TaxonSegregator(object):
         """ Delete all of the reads from the taxonomy hash
         """
         for key in self.taxon_mapping.keys():
-            for i in range(len(self.taxon_mapping[key])):
+            for i in self.taxon_mapping[key].keys():
                 del self.taxon_mapping[key][i][:]
         self.done_segregation = False
 
@@ -234,9 +255,9 @@ class TaxonSegregator(object):
             values. The second dimension is a sorted list of ggIds
         '''
         result_arrays = [[] * n for n in range(len(self.cutoffs))]
-        for cutoff_index , inner_data in self.taxon_mapping.items():
-            result_arrays[cutoff_index].extend(sorted(inner_data.keys(),
-                key=lambda k: len(inner_data[k]), reverse=True))
+        for cutoff_index, cutoff in enumerate(self.cutoffs):
+            result_arrays[cutoff_index].extend(sorted(self.taxon_mapping[cutoff].keys(),
+                key=lambda k: len(self.taxon_mapping[cutoff][k]), reverse=True))
 
         return result_arrays
 
@@ -257,7 +278,9 @@ class TaxonSegregator(object):
 
     def clusterHits(self, sortedHits):
         # clusters reference sequences within sequence identity threshold
-        ggClusters = [[] * n for n in range(len(self.cutoffs))]
+        # dict of cluster refID to cluster objects
+        ggClusters = []
+        #ggClusters = [[] * n for n in range(len(self.cutoffs))]
         for n in range(len(self.cutoffs)):
             processedIds = set()
             for i in xrange(0, len(sortedHits[n])):
@@ -266,21 +289,24 @@ class TaxonSegregator(object):
                     continue
 
                 processedIds.add(ggIdI)
-
                 clusteredReads = []
-                clusteredReads.extend(self.taxon_mapping[n][ggIdI])
+                clusteredReads.extend(self.taxon_mapping[self.cutoffs[n]][ggIdI])
 
-                for j in xrange(i + 1, len(sortedHits[n])):
-                    ggIdJ = sortedHits[n][j]
-                    if ggIdJ in processedIds:
-                        continue
+                # -1 means unmapped which means no taxon and no neighbours
+                if ggIdI != -1:
+                    for j in xrange(i + 1, len(sortedHits[n])):
+                        ggIdJ = sortedHits[n][j]
+                        if ggIdJ in processedIds:
+                            continue
 
-                    if ggIdJ in self.neighbours[ggIdI]:
-                        clusteredReads.extend(self.taxon_mapping[n][ggIdJ])
-                    processedIds.add(ggIdJ)
+                        if ggIdJ in self.neighbours[ggIdI]:
+                            clusteredReads.extend(self.taxon_mapping[self.cutoffs[n]][ggIdJ])
+                            processedIds.add(ggIdJ)
 
-
-                ggClusters[n].append(clusteredReads)
+                clust = Cluster(ggIdI, self.cutoffs[n], clusteredReads)
+                #print clusteredReads
+                #ggClusters[n].append(clusteredReads)
+                ggClusters.append(clust)
 
         return ggClusters
 
@@ -302,24 +328,22 @@ class TaxonSegregator(object):
             if not read.is_unmapped():
                 percent_id = read.percent_identity()
                 this_read_cutoff_index = 0
-                for i in range(len(self.cutoffs)):
-                    if percent_id >= self.cutoffs[i]:
+                for i in self.cutoffs:
+                    if percent_id >= i:
                         this_read_cutoff_index = i
                     else:
                         break
 
                     try:
+                        #print this_read_cutoff_index, read.rname
                         self.taxon_mapping[this_read_cutoff_index][read.rname].append(read)
                     except KeyError:
-                        #tmp_array = [[] * n for n in range(len(self.cutoffs))]
-                        self.taxon_mapping[this_read_cutoff_index] = {}
                         self.taxon_mapping[this_read_cutoff_index][read.rname] = [read]
             else:
                 try:
                     self.taxon_mapping[-1][-1].append(read)
                 except KeyError:
-                    self.taxon_mapping[-1] = {}
-                    self.taxon_mapping[-1][-1]= [read]
+                    self.taxon_mapping[-1][-1] = [read]
 
     def segregate2(self, root='root', minCount=1000,
             minCoverage=2, fasta=True, qual=True,
@@ -349,58 +373,62 @@ class TaxonSegregator(object):
         
         sorted_hits = self.sortHits()
         otu_clusters = self.clusterHits(sorted_hits)
+        incomplete_taxons = defaultdict(list)
+        complete_taxons = defaultdict(list)
 
             #raise RuntimeError('the neighbours file has not been parsed')
-        for cutoff_index, cutoff in enumerate(self.cutoffs):
-            for cluster in otu_clusters[cutoff_index]:
+        #for cutoff_index, cutoff in enumerate(self.cutoffs):
+        #for cluster in otu_clusters[cutoff_index]:
+        for cluster in otu_clusters:
+            try:
+                taxon_ranks = self.ref_taxon_mapping[cluster.ref]
+            except:
+                taxon_ranks = ()
+
+            if self._check_taxon_coverage(cluster.reads, minCount, minCoverage):
+                
+                complete_taxons[taxon_ranks].append(cluster.cutoff)
+
+                dir_path = os.path.join(root, *taxon_ranks)
+                if not os.path.exists(dir_path):
+                    os.makedirs(dir_path)
+
+                fafp = None
+                qualfp = None
+                fqfp = None
+                samfp = None
+                prefix = str(cluster.ref)
                 try:
-                    taxon_ranks = self.ref_taxon_mapping[cluster[0].rname]
-                except:
-                    taxon_ranks = ()
+                    if fasta:
+                        fafp = open(os.path.join(dir_path,'%s_%.2f.fa' %
+                            (prefix, cluster.cutoff)), 'w')
+                    if qual:
+                        qualfp = open(os.path.join(dir_path,'%s_%.2f.fa.qual' %
+                            (prefix, cluster.cutoff)), 'w')
+                    if fastq:
+                        fqfp = open(os.path.join(dir_path,'%s_%.2f.fq' %
+                            (prefix, cluster.cutoff)), 'w')
+                    if sam:
+                        samfp = open(os.path.join(dir_path, '%s_%.2f.sam' %
+                            (prefix, cluster.cutoff)), 'w')
 
-                if self._check_taxon_coverage(cluster, minCount, minCoverage):
-                    
-                    complete_taxons[taxon_ranks].append(self.cutoffs[cutoff_index])
-
-                    dir_path = os.path.join(root, *taxon_ranks)
-                    if not os.path.exists(dir_path):
-                        os.makedirs(dir_path)
-
-                    fafp = None
-                    qualfp = None
-                    fqfp = None
-                    samfp = None
-                    try:
-                        if fasta:
-                            fafp = open(os.path.join(dir_path,'%s_%.2f.fa' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
-                        if qual:
-                            qualfp = open(os.path.join(dir_path,'%s_%.2f.fa.qual' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
-                        if fastq:
-                            fqfp = open(os.path.join(dir_path,'%s_%.2f.fq' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
+                    for aligned_read in cluster.reads:
+                        self._sam_to_fastx(aligned_read, fasta=fafp,
+                                qual=qualfp, fastq=fqfp)
                         if sam:
-                            samfp = open(os.path.join(dir_path, '%s_%.2f.sam' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
+                            samfp.write('%s\n' % str(aligned_read))
 
-                        for aligned_read in cluster:
-                            self._sam_to_fastx(aligned_read, fasta=fafp,
-                                    qual=qualfp, fastq=fqfp)
-                            if sam:
-                                samfp.write('%s\n' % str(aligned_read))
-
-                    finally:
-                        if fafp is not None: 
-                            fafp.close()
-                        if qualfp is not None:
-                            qualfp.close()
-                        if fqfp is not None:
-                            fqfp.close()
-                        if samfp is not None:
-                            samfp.close()
-                else:
-                    incomplete_taxons[taxon_ranks].append(self.cutoffs[cutoff_index])
+                finally:
+                    if fafp is not None: 
+                        fafp.close()
+                    if qualfp is not None:
+                        qualfp.close()
+                    if fqfp is not None:
+                        fqfp.close()
+                    if samfp is not None:
+                        samfp.close()
+            else:
+                incomplete_taxons[taxon_ranks].append(cluster.cutoff)
 
         self.done_segregation = True
         return complete_taxons, incomplete_taxons

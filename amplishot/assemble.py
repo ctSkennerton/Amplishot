@@ -31,8 +31,10 @@ __status__ = "Development"
 import logging
 import multiprocessing
 import os
+import glob
+import re
 from cogent.app.util import FilePath
-from cogent.app.cd_hit import CD_HIT_EST
+from amplishot.app.cd_hit import CD_HIT_EST
 from amplishot.app.phrap import Phrap
 from amplishot.app.fermi import Fermi
 from amplishot.app.velvet import Velvetg, Velveth
@@ -133,6 +135,8 @@ def assemble(taxon, assembler_params,
     return results['contigs'].name
 
 class AssemblyWrapper(object):
+    read_re = re.compile('(\d+_0\.\d+)\.fa$')
+
     def __init__(self, assembler, config, preAssembleReduction=True,
             stdout=None, stderr=None):
         ''' Entry point for all denovo assembly methods
@@ -190,21 +194,28 @@ class AssemblyWrapper(object):
         if self.reduce:
             # dataset reduction - cd-hit - each partition
             logging.info('clustering...')
-            for taxon, cutoffs in taxons.items():
-                for c in cutoffs:
-                    infile_name = 'reads_%.2f.%s' % (c,
-                            self.assembler_extension)
-                    outfile_name = 'cdhitout_%.2f.fa' % c
-                    
-                    cd_hit_params = dict(infile=infile_name, 
-                            outfile=outfile_name,
-                            similarity=self.config.data['read_clustering_similarity'],
-                            maxMemory=self.config.data['cdhit_max_memory'])
+            for filepath, cutoffs in taxons.items():
+                for read_file in os.listdir(filepath):  #glob.iglob("*fa"):
+                    match = self.read_re.search(read_file)
+                    if match:
+                        infile_name = read_file
+                        outfile_name = 'cdhitout_%s.fa' % match.group(1)
+                        logging.debug("Found read file: %s\nIn directory: %s",
+                                infile_name, filepath)
+                    #for c in cutoffs:
+                        #infile_name = 'reads_%.2f.%s' % (c,
+                        #        self.assembler_extension)
+                        #outfile_name = 'cdhitout_%.2f.fa' % c
+                        
+                        cd_hit_params = dict(infile=infile_name, 
+                                outfile=outfile_name,
+                                similarity=self.config.data['read_clustering_similarity'],
+                                maxMemory=self.config.data['cdhit_max_memory'])
 
-                    pool_results.append(pool.apply_async(reduce_and_assemble,
-                        (taxon, assembly_params, cd_hit_params, self.constructor),
-                        dict(suppressStderr=self.suppressStderr,
-                        suppressStdout=self.suppressStdout)))
+                        pool_results.append(pool.apply_async(reduce_and_assemble,
+                            (filepath, assembly_params, cd_hit_params, self.constructor),
+                            dict(suppressStderr=self.suppressStderr,
+                            suppressStdout=self.suppressStdout)))
 
             pool.close()
             pool.join()
@@ -234,18 +245,23 @@ class AssemblyWrapper(object):
         else:
 
             # generate overlaps - each partition
-            for taxon, cutoffs in taxons.items():
-                for c in cutoffs:
-                    infile_name = 'reads_%.2f.%s' % (c,
-                            self.assembler_extension)
-                    try:
-                        params = self.config.data[self.assembler]
-                    except KeyError:
-                        params = None
-                    pool_results.append(pool.apply_async(assemble,
-                        (taxon, assembly_params, self.constructor),
-                        dict(suppressStderr=self.suppressStderr,
-                        suppressStdout=self.suppressStdout, infile=infile_name)))
+            for filepath, cutoffs in taxons.items():
+                for read_file in os.listdir(filepath):  #glob.iglob("*fa"):
+                    #for read_file in glob.iglob("*fa"):
+                    match = self.read_re.search(read_file)
+                    if match:
+                        infile_name = read_file
+                    #for c in cutoffs:
+                    #    infile_name = 'reads_%.2f.%s' % (c,
+                    #            self.assembler_extension)
+                        try:
+                            params = self.config.data[self.assembler]
+                        except KeyError:
+                            params = None
+                        pool_results.append(pool.apply_async(assemble,
+                            (filepath, assembly_params, self.constructor),
+                            dict(suppressStderr=self.suppressStderr,
+                            suppressStdout=self.suppressStdout, infile=infile_name)))
             pool.close()
             pool.join()
 

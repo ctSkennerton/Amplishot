@@ -214,10 +214,10 @@ def pipeline(config):
         # partition dataset based on mapped reads
         logging.info('partitioning...')
         taxon_root = os.path.join(root_dir, samplename, 'root')
-        taxseg.parse_sam(open(sample_mapping_file))
+        taxseg.parse_sam2(open(sample_mapping_file))
         bowtie_results.cleanUp()
 
-        good_taxons, bad_taxons = taxseg.segregate(root=taxon_root,
+        good_taxons, bad_taxons = taxseg.segregate2(root=taxon_root,
                 minCount=config.data['taxon_coverage'][1],
                 minCoverage=config.data['taxon_coverage'][0],
                 sam=True)

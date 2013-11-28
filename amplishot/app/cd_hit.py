@@ -5,7 +5,7 @@ import shutil
 from os import remove
 from os.path import join as path_join
 from cogent.app.parameters import ValuedParameter
-from cogent.app.util import CommandLineApplication, ResultPath,\
+from cogent.app.util import CommandLineApplication, ApplicationError, ResultPath,\
         get_tmp_filename
 from cogent.core.moltype import RNA, DNA, PROTEIN
 from cogent.core.alignment import SequenceCollection
@@ -211,6 +211,12 @@ class CD_HIT_EST(CD_HIT):
         # if set to 1, do both +/+ & +/- alignments
         '-r':ValuedParameter('-',Name='r',Delimiter=' ')
         })
+
+    def _handle_app_result_build_failure(self,out,err,exit_status,result_paths):
+        outstr = "Problem running cd-hit-est.\nexit_status: %s\nstdout: %s\nstderr: %s\n" % (str(exit_status), str(out), str(err))
+        for k,v in result_paths.items():
+            outstr += "%s: %s\n" % (k, v.Path)
+        raise ApplicationError(outstr)
 
 def cdhit_clusters_from_seqs(seqs, moltype, params=None):
     """Returns the CD-HIT clusters given seqs

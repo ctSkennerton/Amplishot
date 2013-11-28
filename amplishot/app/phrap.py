@@ -276,3 +276,8 @@ class Phrap(ExtendedCommandLineApplication):
                     oprefix + '.singlets'), IsWritten=True)
                 }
         return results
+
+    def _handle_app_result_build_failure(self,out,err,exit_status,result_paths):
+        raise ApplicationError("Problem running Phrap."
+                " exit_status = %s\n%s\n%s\n%s" % (str(exit_status),str(out), str(err),
+            str(result_paths) ))

@@ -23,7 +23,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -33,15 +33,18 @@ import multiprocessing
 import os
 import glob
 import re
+import subprocess
 from cogent.app.util import FilePath
 from amplishot.app.cd_hit import CD_HIT_EST
 from amplishot.app.phrap import Phrap
 from amplishot.app.fermi import Fermi
 from amplishot.app.velvet import Velvetg, Velveth
+from amplishot.app.spades import Spades
+from amplishot.app.ray import Ray
 import amplishot.parse.fastx
 ###############################################################################
 
-def phrap_constructor( workingdir, params=None, infile='cdhitout.fa',
+def phrap_constructor( workingdir, params=None,
         suppressStdout=True, suppressStderr=True):
     #logger = multiprocessing.log_to_stderr()
     p = amplishot.app.phrap.Phrap(params=params, SuppressStdout=suppressStdout,
@@ -85,6 +88,67 @@ def velvet_constructor(workingdir, params=None, infile='reads.fa',
             HALT_EXEC=False)
     return vg()
 
+def spades_constructor(workingdir, params=None,
+        suppressStdout=True, suppressStderr=True):
+    if '-o' not in params:
+        params['-o'] = infile[:-3]
+
+    if 'r1' in params and 'r2' in params:
+        params['-1'] = params['r1']
+        params['-2'] = params['r2']
+        del params['r1']
+        del params['r2']
+    elif 'r12' in params:
+        params['--12'] = params['r12']
+        del params['r12']
+    
+    if 's' in params:
+        params['-s'] = params['s']
+        del params['s']
+
+    s = Spades(params=params, SuppressStdout=suppressStdout,
+            SuppressStderr=suppressStderr, WorkingDir=workingdir,
+            HALT_EXEC=False)
+    return s()
+
+def ray_constructor(workingdir, params=None,
+        suppressStdout=True, suppressStderr=True):
+    if '-o' not in params:
+        params['-o'] = infile[:-3]
+
+    if 'kmer_size' not in params:
+        params['-k'] = 31
+    else:
+        params['-k'] = params['kmer_size']
+        del params['kmer_size']
+
+    if 'r1' in params and 'r2' in params:
+        params['-p'] = os.path.join(workingdir,params['r1']) + " " + os.path.join(workingdir, params['r2'])
+        del params['r1']
+        del params['r2']
+    elif 'r12' in params:
+        params['-i'] = os.path.join(workingdir,params['r12'])
+        del params['r12']
+    
+    if 's' in params:
+        params['-s'] = os.path.join(workingdir,params['s'])
+        del params['s']
+    cmd = ['Ray']
+    cmd.extend([str(k) + " " + str(v) for k,v in params.items()])
+    logging.debug(' '.join(cmd))
+    with open(os.devnull, 'w') as dn:
+        retcode = subprocess.call(' '.join(cmd), stdout=dn, stderr=dn, shell=True)
+    if retcode == 0:
+        ret = {}
+        ret['contigs'] = os.path.join(params['-o'],"Contigs.fasta")
+        return ret
+    else:
+        raise RuntimeError("Ray failed to run. exit code = %d" % retcode)
+    #r = Ray(params=params, SuppressStdout=suppressStdout,
+    #        SuppressStderr=suppressStderr, WorkingDir=workingdir,
+    #        HALT_EXEC=False)
+    #logging.debug(str(r))
+    #return r()
 
 def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa', similarity=0.98, maxMemory=1000):
     cdhit = CD_HIT_EST(WorkingDir=workingdir)
@@ -125,17 +189,31 @@ def reduce_and_assemble(taxon, assembler_params, cd_hit_params,
             suppressStderr=suppressStderr,
                 suppressStdout=suppressStdout)
 
-def assemble(taxon, assembler_params,
-        assembler_constructor, infile='reads.fa',
+def assemble(filePrefix, assembler_params,
+        assembler_constructor,
         suppressStderr=True, suppressStdout=True):
-    results = assembler_constructor(taxon, assembler_params,
-            infile=infile,
+    working_dir, file_prefix = os.path.split(filePrefix)
+    if 'r1' in assembler_params and 'r2' in assembler_params:
+        assembler_params['r1'] = file_prefix + assembler_params['r1']
+        assembler_params['r2'] = file_prefix + assembler_params['r2']
+    elif 'r12' in assembler_params:
+        assembler_params['r12'] = file_prefix + assembler_params['r12']
+    
+    if 's' in assembler_params:
+        assembler_params['s'] = file_prefix + assembler_params['s']
+
+    results = assembler_constructor(working_dir, assembler_params,
                 suppressStderr=suppressStderr,
                 suppressStdout=suppressStdout)
-    return results['contigs'].name
+    try:
+        return results['contigs'].name
+    except:
+        return results['contigs']
 
 class AssemblyWrapper(object):
-    read_re = re.compile('(\d+_0\.\d+)\.fa$')
+    singles_re = re.compile('(\d+_0\.\d+)_s\.fast[aq]$')
+    pairs_re = re.compile('(\d+_0\.\d+)_R12\.fast[aq]$')
+    first_re = re.compile('(\d+_0\.\d+)_R1\.fast[aq]$')
 
     def __init__(self, assembler, config, preAssembleReduction=True,
             stdout=None, stderr=None):
@@ -167,6 +245,10 @@ class AssemblyWrapper(object):
             self.constructor = phrap_constructor
         elif assembler == 'velvet':
             self.constructor = velvet_constructor
+        elif assembler == 'spades':
+            self.constructor = spades_constructor
+        elif assembler == 'ray':
+            self.constructor = ray_constructor
         else:
             raise RuntimeError('your choice of assembler is not supported')
 
@@ -189,7 +271,7 @@ class AssemblyWrapper(object):
         try:
             assembly_params = self.config.data[self.assembler]
         except KeyError:
-            assembly_params = None
+            assembly_params = dict()
 
         if self.reduce:
             # dataset reduction - cd-hit - each partition
@@ -220,73 +302,51 @@ class AssemblyWrapper(object):
             pool.close()
             pool.join()
 
-            full_length_counter = 1
-            for result in pool_results:
-                r = result.get()
-                have_qual = False
-                if os.path.exists(r + '.qual'):
-                    have_qual = True
-                    qual_names = dict()
-                fxparser = amplishot.parse.fastx.FastxReader(open(r))
-                for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
-                length=self.config.data['minimum_reconstruction_length']):
-                    seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
-                    self.fullLengthSeqs[seq_name] = seq
-                    if have_qual:
-                        qual_names[name] = seq_name
-                    logging.debug("Assigning %s from %s", seq_name, r)
-                    full_length_counter += 1
-                    
-                if have_qual:
-                    qualparser = amplishot.parse.fastx.QualityReader(open(r + '.qual'))
-                    for name, qual in qualparser.parse():
-                        if name in qual_names:
-                            self.fullLengthQuals[qual_names[name]] = qual
         else:
+            for filepath, read_types in taxons.items():
+                local_params = assembly_params.copy()
+                local_params.update(read_types)
+                local_params['-o'] = filepath
 
-            # generate overlaps - each partition
-            for filepath, cutoffs in taxons.items():
-                for read_file in os.listdir(filepath):  #glob.iglob("*fa"):
-                    #for read_file in glob.iglob("*fa"):
-                    match = self.read_re.search(read_file)
-                    if match:
-                        infile_name = read_file
-                    #for c in cutoffs:
-                    #    infile_name = 'reads_%.2f.%s' % (c,
-                    #            self.assembler_extension)
-                        try:
-                            params = self.config.data[self.assembler]
-                        except KeyError:
-                            params = None
-                        pool_results.append(pool.apply_async(assemble,
-                            (filepath, assembly_params, self.constructor),
-                            dict(suppressStderr=self.suppressStderr,
-                            suppressStdout=self.suppressStdout, infile=infile_name)))
+                #single thread mode
+                #res = assemble(filepath, assembly_params, self.constructor, suppressStderr=self.suppressStderr, suppressStdout=self.suppressStdout)
+                #pool_results.append(res)
+                
+                #FIXME: There is something super weird with the multithreading
+                #mode that causes an error when reading an output file even when
+                #the file exists.  This problem does not happen in the single
+                #threaded mode.
+
+                pool_results.append(pool.apply_async(assemble,
+                    (filepath, local_params, self.constructor),
+                    dict(suppressStderr=self.suppressStderr,
+                    suppressStdout=self.suppressStdout)))
             pool.close()
             pool.join()
 
-            full_length_counter = 1
-            for result in pool_results:
-                r = result.get()
-                have_qual = False
-                if os.path.exists(r + '.qual'):
-                    have_qual = True
-                    qual_names = dict()
-                fxparser = amplishot.parse.fastx.FastxReader(open(r))
-                for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
-                length=self.config.data['minimum_reconstruction_length']):
-                    seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
-                    self.fullLengthSeqs[seq_name] = seq
-                    if have_qual:
-                        qual_names[name] = seq_name
-                    logging.debug("Assigning %s from %s", seq_name, r)
-                    full_length_counter += 1
-                
+        full_length_counter = 1
+        #for r in pool_results:
+        for result in pool_results:
+            r = result.get()
+            have_qual = False
+            if os.path.exists(r + '.qual'):
+                have_qual = True
+                qual_names = dict()
+            fxparser = amplishot.parse.fastx.FastxReader(open(r))
+            for name, seq, qual in fxparser.parse(callback=amplishot.parse.fastx.greater_than, 
+            length=self.config.data['minimum_reconstruction_length']):
+                seq_name = '%s_%i %s' % (sampleName, full_length_counter, name)
+                self.fullLengthSeqs[seq_name] = seq
                 if have_qual:
-                    qualparser = amplishot.parse.fastx.QualityReader(open(r + '.qual'))
-                    for name, qual in qualparser.parse():
-                        if name in qual_names:
-                            self.fullLengthQuals[qual_names[name]] = qual
+                    qual_names[name] = seq_name
+                logging.debug("Assigning %s from %s", seq_name, r)
+                full_length_counter += 1
+            
+            if have_qual:
+                qualparser = amplishot.parse.fastx.QualityReader(open(r + '.qual'))
+                for name, qual in qualparser.parse():
+                    if name in qual_names:
+                        self.fullLengthQuals[qual_names[name]] = qual
 
 
     def write(self, fp, qfp = None):

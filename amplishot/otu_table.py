@@ -25,7 +25,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -99,7 +99,7 @@ class OTUTableGenerator(object):
 
         os.remove(tmp.name)
 
-    def generate_abundance(self, reads, alias=None, params=None):
+    def generate_abundance(self, alias=None, params=None):
         """ Take in a set of reads and map them with bowtie to the rep set
         reads: should be a list of paths to files containing reads
         Would have been one of the same ones that was originally
@@ -113,7 +113,7 @@ class OTUTableGenerator(object):
 
         tmp = tempfile.TemporaryFile()
 
-        results = self._make_sam(reads, params, stdout=tmp)
+        results = self._make_sam(params, stdout=tmp)
         tmp.seek(0)
         self._parse_sam(tmp)
         results.cleanUp()
@@ -132,11 +132,11 @@ class OTUTableGenerator(object):
         if observation_metadata is not None:
             self.biom_table.addObservationMetadata(observation_metadata)
     
-    def _make_sam(self, reads, params=None, stdout=None):
+    def _make_sam(self, params=None, stdout=None):
         """ Call bowtie on a combined set of full length sequences
         """
         _params = {'-x': os.path.join(self.outdir,
-            self.outprefix), '-U': reads}
+            self.outprefix)}
         if params is None:
             params = _params
         else:

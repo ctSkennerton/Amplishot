@@ -25,7 +25,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2012-2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -46,9 +46,9 @@ from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble,\
         conserved_sequences
-from amplishot.app import bowtie, pandaseq
+from amplishot.app import bowtie, pandaseq, sortmerna
 from amplishot.config import AmplishotConfig
-from cogent.app.cd_hit import CD_HIT_EST
+from amplishot.app.cd_hit import CD_HIT_EST
 from cogent.app.util import FilePath
 ###############################################################################
 
@@ -104,11 +104,18 @@ def filter_sam(args):
 def make_aliases(config):
     indata = []
     config.data['aliases'] = []
-    for readfile in config.data['pairtig_read_files']:
-        sample_file_name =\
-        os.path.splitext(os.path.basename(readfile))[0]
-        indata.append((readfile, sample_file_name))
-        config.data['aliases'].append(sample_file_name)
+    if 'skip_pairtigs' not in config.data:
+        for readfile in config.data['pairtig_read_files']:
+            sample_file_name =\
+            os.path.splitext(os.path.basename(readfile))[0]
+            indata.append([readfile, sample_file_name])
+            config.data['aliases'].append(sample_file_name)
+    else:
+        for r1, r2 in config.data['input_raw_reads']:
+            sample_file_name =\
+            os.path.splitext(os.path.basename(r1))[0]
+            indata.append(([r1,r2], sample_file_name))
+            config.data['aliases'].append(sample_file_name)
 
     return indata
 
@@ -121,7 +128,7 @@ def orientate(fullLengthSeqs):
     return fullLengthSeqs
 
 
-def count_reads_in_pairtig_file(fp):
+def count_reads_in_file(fp):
     parser = amplishot.parse.fastx.FastxReader(fp)
     read_count = 0
     for name, seq, qual in parser.parse():
@@ -158,11 +165,56 @@ def generate_pairtigs(config, root_dir):
         for result in panda_pool_results:
             pairtig_file = result.get()
             with open(pairtig_file) as fp:
-                reads_counts.append(count_reads_in_pairtig_file(fp))
+                reads_counts.append(count_reads_in_file(fp))
                 r = result.get()
             config.data['pairtig_read_files'].append(os.path.abspath(r))
     return reads_counts
 
+
+def extract_from_metagenome(read1, read2=None, outfile='./rrna', db=None):
+    """Get reads from marker genes from a bulk metagenome
+    """
+    try:
+        ndb = len(db)
+    except:
+        print "no SortMeRNA databases specified "
+
+    if read2:
+        # have to interleave the files
+        smr_in = tempfile.NamedTemporaryFile(delete=False)
+        with gzip.open(read1), gzip.open(read2) as fp1, fp2:
+            r1 = amplishot.parse.fastx.FastxReader(fp1)
+            r2 = amplishot.parse.fastx.FaxtxReader(fp2)
+            for name1, seq1, qual1 in r1.parse():
+                name2, seq2, qual2 = r2.parse()
+                if qual1:
+                    smr_in.write("@%s\n%s\n+\n%s\n" % (name1, seq1, qual1))
+                    smr_in.write("@%s\n%s\n+\n%s\n" % (name2, seq2, qual2))
+                else:
+                    smr_in.write(">%s\n%s\n" % (name1, seq1))
+                    smr_in.write(">%s\n%s\n" % (name2, seq2))
+        smr_in.close()
+        smr = sortmerna.Sortmerna()
+        smr.Parameters['--pair-in'].on()
+        smr.Parameters['--accept'].on(outfile)
+        smr.Parameters['--I'].on(smr_in.name)
+    else:
+        smr_in = read1
+
+
+def get_normalized_read_count(*args):
+    ''' given a list of open file objects, counts the number of fasta/fastq
+    records and return the smallest number rounded bound to the nearest 100
+    '''
+    c = []
+    for fd in args:
+        c.append( count_reads_in_file(fd))
+    x = min(c)
+    if len(c) == 1:
+        return x
+    else:
+        normalized_read_count = x if x % 100 == 0 else x - 100 - x % 100
+        return normalized_read_count
 
 def pipeline(config):
     """Run all the steps of amplishot
@@ -170,13 +222,25 @@ def pipeline(config):
     root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
 
     # generate fragment consensus sequences - pandaseq
-    reads_counts = generate_pairtigs(config, root_dir)
-    # take the smallest number of pairtigs and round down to the nearest 100
-    if len(reads_counts) > 1:
-        x = min(reads_counts)
+    read_counts = []
+    if 'skip_pairtigs' not in config.data:
+        read_counts = generate_pairtigs(config, root_dir)
+        # take the smallest number of pairtigs and round down to the nearest 100
+    else:
+        for rrf in config.data['input_raw_reads']:
+            if isinstance(rrf, list):
+                infile = rrf[0]
+            else:
+                infile = rrf
+            with gzip.open(infile) as fd:
+                read_counts.append(count_reads_in_file(fd))
+
+    if len(read_counts) > 1:
+        x = min(read_counts)
         normalized_read_count = x if x % 100 == 0 else x - 100 - x % 100
     else:
         normalized_read_count = reads_counts[0]
+
     # map overlapped fragments with bowtie
     # create the file for all the full-length seqs
     full_length_seqs =\
@@ -187,29 +251,38 @@ def pipeline(config):
     taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'],
             cutoffs=config.data['mapping_similarity_cutoffs'])
 
-    # fix up the aliases
-    indata = []
-    if config.data['aliases']:
-        if len(config.data['aliases']) != len(config.data['pairtig_read_files']):
-            logging.warn('There are a different number of aliases and input'\
-                'files. Aliases will not be used')
-            indata = make_aliases(config)
+    if 'aliases' in config.data:
+        if 'skip_pairtigs' not in config.data:
+            if len(config.data['aliases']) != len(config.data['input_raw_data']):
+                logging.warn('There are a different number of aliases and input'\
+                    'files. Aliases will not be used')
+                indata = make_aliases(config)
+            else:
+                indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
         else:
-            indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
+            indata = zip(config.data['input_raw_reads'], config.data['aliases'])
     else:
         indata = make_aliases(config)
+
     # assembly wrapper
     wrapper = assemble.AssemblyWrapper(config.data['assembly_method'], config,
             preAssembleReduction=config.data['preassemble_clustering'])
     for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
         sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
-        bowtie_results = map_to_reference( params={'-U': readfile,
+        bowtie_params = {
             '-x': config.data['mapper_database'],
             '-S': sample_mapping_file,
             '-p': config.data['threads'],
             #'-u': 10000,
-            })
+            }
+        if isinstance(readfile, list):
+            bowtie_params['-1'] = readfile[0]
+            bowtie_params['-2'] = readfile[1]
+        else:
+            bowtie_params['-U'] = readfile
+
+        bowtie_results = map_to_reference( params=bowtie_params)
 
         # partition dataset based on mapped reads
         logging.info('partitioning...')
@@ -217,27 +290,35 @@ def pipeline(config):
         taxseg.parse_sam2(open(sample_mapping_file))
         bowtie_results.cleanUp()
 
-        good_taxons, bad_taxons = taxseg.segregate2(root=taxon_root,
+        output_fastq = False
+        output_qual = True
+        output_fasta = True
+        output_pairs = False
+        sep12 = False
+        if config.data['assembly_method'] == 'spades' or config.data['assembly_method'] == 'ray':
+            output_fastq = True
+            output_qual = False
+            output_fasta = False
+            output_pairs = True
+            sep12 = True
+
+        good_taxons = taxseg.segregate2(root=taxon_root,
                 minCount=config.data['taxon_coverage'][1],
                 minCoverage=config.data['taxon_coverage'][0],
-                sam=True)
+                sam=False, fastq=output_fastq, fasta=output_fasta,
+                qual=output_qual, pairs=output_pairs, sep12=sep12)
         taxseg.clear()
 
         if len(good_taxons) < 1:
             logging.info("No taxons for assembly")
         else:
-            logging.info('There are %i taxons suitable for assembly'\
-                    ' and %i taxons with incomplete coverage',
-                    len(good_taxons), len(bad_taxons))
+            logging.info('There are %i taxons suitable for assembly',
+                    len(good_taxons))
 
             if good_taxons.has_key(()) and not config.data['assemble_unknowns']:
                 del good_taxons[()]
 
-            taxons_for_assembly = {}
-            for taxon, cutoffs in good_taxons.items():
-                taxons_for_assembly[os.path.join(taxon_root, *taxon)] = cutoffs
-
-            wrapper(taxons_for_assembly, samplename)
+            wrapper(good_taxons, samplename)
 
     # check to see if there are any full length sequences
     # if not we finish here
@@ -294,9 +375,14 @@ def pipeline(config):
         abundance = amplishot.otu_table.OTUTableGenerator(rep_set_seqs,
                 root_dir)
         #generate abundance based on coverage and create OTU table
-        _params = {'-p': config.data['threads'], '-u': normalized_read_count}
         for read_file, sample_name in indata:
-            abundance.generate_abundance(read_file, alias=sample_name,
+            _params = {'-p': config.data['threads'], '-u': normalized_read_count}
+            if isinstance(readfile, list):
+                _params['-1'] = readfile[0]
+                _params['-2'] = readfile[1]
+            else:
+                _params['-U'] = readfile
+            abundance.generate_abundance(alias=sample_name,
                     params=_params)
 
         abundance.generate_biom_table()

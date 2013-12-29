@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 ###############################################################################
 #
-# pandaseq.py - application controller for pandaseq
+# spades.py - application controller for spades 2.5.1
 #
 ###############################################################################
 #                                                                             #
@@ -30,34 +30,47 @@ __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
 
 ###############################################################################
+import os
 from cogent.app.parameters import FlagParameter, ValuedParameter
-from amplishot.app.util import ExtendedCommandLineApplication
-#from cogent.app.util import CommandLineApplication
+from cogent.app.util import CommandLineApplication, ResultPath, ApplicationError
 
-class Pandaseq(ExtendedCommandLineApplication):
-    """Simple pandaseq application controller.
+class Spades(CommandLineApplication):
+    """Simple spades application controller.
     """
     _parameters = {
-        '-6': FlagParameter('-', '6'),
-        '-B': FlagParameter('-', 'B'),
-        '-C': ValuedParameter('-', 'C', Delimiter=' '),
-        '-d': ValuedParameter('-', 'd', Delimiter=' '),
-        '-f': ValuedParameter('-', 'f', Delimiter=' ', IsPath=True),
-        '-F': FlagParameter('-', 'F'),
-        '-j': FlagParameter('-', 'j'),
-        '-l': ValuedParameter('-', 'l', Delimiter=' '),
-        '-L': ValuedParameter('-', 'L', Delimiter=' '),
-        '-N': FlagParameter('-', 'N'),
-        '-o': ValuedParameter('-', 'o', Delimiter=' '),
-        '-p': ValuedParameter('-', 'p', Delimiter=' '),
-        '-q': ValuedParameter('-', 'q', Delimiter=' '),
-        '-r': ValuedParameter('-', 'r', Delimiter=' ', IsPath=True),
-        '-t': ValuedParameter('-', 't', Delimiter=' '),
-        '-T': ValuedParameter('-', 'T', Delimiter=' '),
+        '-o': ValuedParameter('-', 'o', Delimiter=' ', IsPath=True),
+        '--sc': FlagParameter('--', 'sc'),
+        '--12': ValuedParameter('--', '12', Delimiter=' ', IsPath=True),
+        '-s': ValuedParameter('-', 's', Delimiter=' ', IsPath=True),
+        '-1': ValuedParameter('-', '1', Delimiter=' ', IsPath=True),
+        '-2': ValuedParameter('-', '2', Delimiter=' ', IsPath=True),
+        '--rectangles': FlagParameter('--', 'rectangles'),
+        '--careful': FlagParameter('--', 'careful')
         }
-    _command = 'pandaseq'
+    _synonyms = {
+            'rectangles': '--rectangles',
+            'careful': '--careful'
+            }
+    _command = 'spades.py'
 
     def _accept_exit_status(self, exit_status):
         """Accept an exit status of 0 for the pandaseq program.
         """
         return exit_status == 0
+    
+    def _get_result_paths(self, data):
+        ret = {}
+        outdir = self.Parameters['-o'].Value
+        ret['contigs'] = ResultPath(Path=os.path.join(self.WorkingDir,outdir,'contigs.fasta'),
+                    IsWritten=True)
+        if self.Parameters['--12'].isOn() or self.Parameters['-1'].isOn():
+            ret['scaffolds'] = ResultPath(Path=os.path.join(self.WorkingDir,outdir,'scaffolds.fasta'),
+                        IsWritten=True)
+        return ret
+
+    def _handle_app_result_build_failure(self,out,err,exit_status,result_paths):
+        return_message = "Problem running spades. exit_status = %s\n%s\n%s\n%s\n" % (str(exit_status),str(out), str(err),
+            str(result_paths) )
+        for k,v in result_paths.items():
+            return_message += "%s\t%s" % (str(k), str(v.Path))
+        raise ApplicationError(return_message)

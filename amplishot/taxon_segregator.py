@@ -25,7 +25,7 @@ __author__ = "Connor Skennerton"
 __copyright__ = "Copyright 2013"
 __credits__ = ["Connor Skennerton"]
 __license__ = "GPL3"
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 __maintainer__ = "Connor Skennerton"
 __email__ = "c.skennerton@gmail.com"
 __status__ = "Development"
@@ -48,18 +48,30 @@ from amplishot.util import reverse_complement
 class Cluster (object):
     """Holding class for information about a cluster of reads
     """
-    def __init__(self, _ref, _cutoff, _reads):
+    def __init__(self, _ref, _cutoff, _first=None, _second=None, _singles=None):
         """
             _ref: ggID for the reference sequence that this cluster is formed
             around
             _cutoff: The mapping cutoff for reads to the reference sequence in
             the original mapping
-            _reads: a list of AlignedRead objects that form the cluster
+            _first: a list of AlignedRead objects that are first in matched
+            pairs
+            _second: a list of AlignedRead objects that are second in matched
+            pairs
+            _singles: a list of AlignedRead objects that are singletons
         """
         super(Cluster, self).__init__()
         self.ref = _ref
         self.cutoff = _cutoff
-        self.reads = _reads
+        self.first = _first
+        self.second = _second
+        self.singles = _singles
+        if _first is None:
+            self.first = []
+        if _second is None:
+            self.second = []
+        if _singles is None:
+            self.singles = []
 
 
 class TaxonSegregator(object):
@@ -213,34 +225,202 @@ class TaxonSegregator(object):
 
         return count >= minCount
     
-    def _sam_to_fastx(self, alignedRead, fasta=None, qual=None, fastq=None):
+    def _sam_to_fastx2(self, cluster, prefix, fasta=True, qual=True, fastq=False,
+            pairs=False, sep12=False):
         """Take a pysam AlignedRead and convert it into a fasta, qual or fastq
 
-           alignedRead: A SamRead object
-           fasta:       python file object for the sequence in fasta format.  When set
-                        to None, no output will be given
-           qual:        python file object for the qualaty scores.  Wneh set to None, no  
-                        output will be given
-           fastq:       python file object for fastq output.  When set to None, no output
-                        will be given
+           cluster: A Cluster object which contains lists of paired and single
+                    reads
+           prefix:  file path prefix
         """
-        name = alignedRead.qname
-        seq = alignedRead.seq
-        quality = alignedRead.qual
-        if alignedRead.is_reversed():
-            seq = reverse_complement(alignedRead.seq)
-            quality = quality[::-1]
+        if fasta and fastq:
+            raise RuntimeError("cannot output both fasta and fastq at the same time, choose one or the other")
+        #logging.debug("requrested the following read"
+        #        "outputs:\nfasta=%s\nfastq=%s\npairs=%s\nsep12=%s\n",
+        #        str(fasta), str(fastq), str(pairs), str(sep12))
+        #logging.debug("cluster reads: first = %d, second = %d, singles = %d",
+        #        len(cluster.first), len(cluster.second), len(cluster.singles))
+        written_files = {}
+        # for seqs - fasta, fastq
+        fp1 = None
+        fp2 = None
+        fps = None
+        fpp = None
+        # for quals
+        qfp1 = None
+        qfp2 = None
+        qfps = None
+        qfpp = None
+        if len(cluster.first):
+            # we have reads in pairs
+            if fasta:
+                if pairs:
+                    if sep12:
+                        suffix1 = "_R1.fasta"
+                        suffix2 = "_R2.fasta"
+                        fp1 = open(prefix+suffix1, 'w')
+                        fp2 = open(prefix+suffix2, 'w')
+                        written_files['r1'] = suffix1
+                        written_files['r2'] = suffix2
+                    else:
+                        suffix12 = "_R12.fasta"
+                        fpp = open(prefix+suffix12, 'w')
+                        written_files['r12'] = suffix12
+                else:
+                    suffixs = "_s.fasta"
+                    fps = open(prefix+suffixs, 'w')
+                    written_files['s'] = suffixs
 
-        if fasta is not None:
-            fasta.write('>%s\n%s\n' %(name, seq))
+            if qual:
+                if pairs:
+                    if sep12:
+                        suffix1 = "_R1.fasta.qual"
+                        suffix2 = "_R2.fasta.qual"
+                        qfp1 = open(prefix+suffix1, 'w')
+                        qfp2 = open(prefix+suffix2, 'w')
+                        written_files['q1'] = suffix1
+                        written_files['q2'] = suffix2
+                    else:
+                        suffix12 = "_R12.fasta.qual"
+                        qfpp = open(prefix+suffix12, 'w')
+                        written_files['q12'] = suffix12
+                else:
+                    suffixs = "_s.fasta.qual"
+                    qfps = open(prefix+suffixs, 'w')
+                    written_files['qs'] = suffixs
 
-        if fastq is not None:
-            fastq.write('@%s\n%s\n+\n%s' % (name,seq,quality))
-            
-        if qual is not None:
-            quality = amplishot.parse.fastx.decode_quality(quality)
-            quality = ' '.join(str(x) for x in quality)
-            qual.write('>%s\n%s\n' %(name, quality))
+            if fastq:
+                if pairs:
+                    if sep12:
+                        suffix1 = "_R1.fastq"
+                        suffix2 = "_R2.fastq"
+                        fp1 = open(prefix+suffix1, 'w')
+                        fp2 = open(prefix+suffix2, 'w')
+                        written_files['r1'] = suffix1
+                        written_files['r2'] = suffix2
+                    else:
+                        suffix12 = "_R12.fastq"
+                        fpp = open(prefix+suffix12, 'w')
+                        written_files['r12'] = suffix12
+                else:
+                    suffixs = "_s.fastq"
+                    fps = open(prefix+suffixs, 'w')
+                    written_files['s'] = suffixs
+
+            for ar1, ar2 in zip(cluster.first, cluster.second):
+                name1 = ar1.qname
+                seq1 = ar1.seq
+                quality1 = ar1.qual
+                name2 = ar2.qname
+                seq2 = ar2.seq
+                quality2 = ar2.qual
+
+                if ar1.is_reversed():
+                    seq1 = reverse_complement(seq1)
+                    quality1 = quality1[::-1]
+                if ar2.is_reversed():
+                    seq2 = reverse_complement(seq2)
+                    quality2 = quality2[::-1]
+
+                if fp1 is not None and fp2 is not None:
+                    if fasta:
+                        fp1.write(">%s\n%s\n" % (name1, seq1))
+                        fp2.write(">%s\n%s\n" % (name2, seq2))
+                    if fastq:
+                        fp1.write('@%s\n%s\n+\n%s\n' % (name1,seq1,quality1))
+                        fp2.write('@%s\n%s\n+\n%s\n' % (name2,seq2,quality2))
+                    if qual:
+                        quality = amplishot.parse.fastx.decode_quality(quality1)
+                        quality = ' '.join(str(x) for x in quality)
+                        qfp1.write('>%s\n%s\n' %(name1, quality))
+
+                        quality = amplishot.parse.fastx.decode_quality(quality2)
+                        quality = ' '.join(str(x) for x in quality)
+                        qfp2.write('>%s\n%s\n' %(name2, quality))
+                elif fpp is not None:
+                    if fasta:
+                        fpp.write(">%s\n%s\n" % (name1, seq1))
+                        fpp.write(">%s\n%s\n" % (name2, seq2))
+                    if fastq:
+                        fpp.write('@%s\n%s\n+\n%s\n' % (name1,seq1,quality1))
+                        fpp.write('@%s\n%s\n+\n%s\n' % (name2,seq2,quality2))
+                    if qual:
+                        quality = amplishot.parse.fastx.decode_quality(quality1)
+                        quality = ' '.join(str(x) for x in quality)
+                        qfpp.write('>%s\n%s\n' %(name1, quality))
+
+                        quality = amplishot.parse.fastx.decode_quality(quality2)
+                        quality = ' '.join(str(x) for x in quality)
+                        qfpp.write('>%s\n%s\n' %(name2, quality))
+                elif fps is not None:
+                    if fasta:
+                        fps.write(">%s\n%s\n" % (name1, seq1))
+                        fps.write(">%s\n%s\n" % (name2, seq2))
+                    if fastq:
+                        fps.write('@%s\n%s\n+\n%s\n' % (name1,seq1,quality1))
+                        fps.write('@%s\n%s\n+\n%s\n' % (name2,seq2,quality2))
+                    if qual:
+                        quality = amplishot.parse.fastx.decode_quality(quality1)
+                        quality = ' '.join(str(x) for x in quality)
+                        qfps.write('>%s\n%s\n' %(name1, quality))
+
+                        quality = amplishot.parse.fastx.decode_quality(quality2)
+                        quality = ' '.join(str(x) for x in quality)
+                        qfps.write('>%s\n%s\n' %(name2, quality))
+
+
+        if len(cluster.singles):
+            # only reads in singles
+            if fasta:
+                suffixs = "_s.fasta"
+                if fps is None:
+                    fps = open(prefix+suffixs, 'w')
+                    written_files['s'] = suffixs
+            if qual:
+                if qfps is None:
+                    qfps = open(prefix+"_s.fasta.qual", 'w')
+                    written_files['qs'] = "_s.fasta.qual"
+            if fastq:
+                if fps is None:
+                    fps = open(prefix+"_s.fastq",'w')
+                    written_files['s'] = "_s.fastq"
+
+            for ar in cluster.singles:
+                name = ar.qname
+                seq = ar.seq
+                quality = ar.qual
+
+                if ar.is_reversed():
+                    seq = reverse_complement(seq)
+                    quality = quality[::-1]
+
+                if fasta:
+                    fps.write(">%s\n%s\n" % (name, seq))
+                if fastq:
+                    fps.write('@%s\n%s\n+\n%s\n' % (name,seq,quality))
+                if qual:
+                    quality = amplishot.parse.fastx.decode_quality(quality)
+                    quality = ' '.join(str(x) for x in quality)
+                    qfps.write('>%s\n%s\n' %(name, quality))
+        
+        if fp1:
+            fp1.close()
+        if fp2:
+            fp2.close()
+        if fpp:
+            fpp.close()
+        if fps:
+            fps.close()
+        if qfp1:
+            qfp1.close()
+        if qfp2:
+            qfp2.close()
+        if qfpp:
+            qfpp.close()
+        if qfps:
+            qfps.close()
+
+        return written_files
 
     def clear(self):
         """ Delete all of the reads from the taxonomy hash
@@ -276,6 +456,46 @@ class TaxonSegregator(object):
 
             self.neighbours[refId] = clusteredSeqs
 
+    def separateReadsIntoConsistentPairs(self, clusteredReads,
+            removeInconsistent=True):
+        """ Take a single list of AlignedRead objects from a cluster of
+        greengenes IDs and determine if any of the mates do not fall into the
+        cluster and separate the reads into proper pairs and singleton reads
+        """
+        pairs = {}
+        for ar in clusteredReads:
+            if ar.has_multiple_segments():
+                if  ar.rnext == '=' or ar.rnext in self.neighbours[ar.rname]:
+                    if ar.is_first_segment():
+                        if ar.qname in pairs:
+                            pairs[ar.qname][0] = ar
+                        else:
+                            pairs[ar.qname] = [ar, None]
+                    else:
+                        if ar.qname in pairs:
+                            pairs[ar.qname][1] = ar
+                        else:
+                            pairs[ar.qname] = [None, ar]
+                elif not removeInconsistent:
+                    pairs[ar.qname] = [ar, None]
+            else:
+                pairs[ar.qname] = [ar, None]
+
+        first = []
+        second = []
+        singles = []
+        for canonical_name, p in pairs.items():
+            if p[1] is None:
+                # single
+                singles.append(p[0])
+            elif p[0] is None:
+                singles.append(p[1])
+            else:
+                first.append(p[0])
+                second.append(p[1])
+        return first, second, singles
+
+
     def clusterHits(self, sortedHits):
         # clusters reference sequences within sequence identity threshold
         # dict of cluster refID to cluster objects
@@ -302,10 +522,9 @@ class TaxonSegregator(object):
                         if ggIdJ in self.neighbours[ggIdI]:
                             clusteredReads.extend(self.taxon_mapping[self.cutoffs[n]][ggIdJ])
                             processedIds.add(ggIdJ)
-
-                clust = Cluster(ggIdI, self.cutoffs[n], clusteredReads)
-                #print clusteredReads
-                #ggClusters[n].append(clusteredReads)
+                            
+                first, second, single = self.separateReadsIntoConsistentPairs(clusteredReads)
+                clust = Cluster(ggIdI, self.cutoffs[n], first, second, single)
                 ggClusters.append(clust)
 
         return ggClusters
@@ -320,8 +539,6 @@ class TaxonSegregator(object):
         if self.done_segregation:
             raise RuntimeError, 'Segregation has already taken place.  Please\
             parse all samfiles at one and then call segregate at the end'
-
-
 
         samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
         for read in samf.parse():
@@ -347,7 +564,8 @@ class TaxonSegregator(object):
 
     def segregate2(self, root='root', minCount=1000,
             minCoverage=2, fasta=True, qual=True,
-            fastq=False, sam=False, prefix='reads'):
+            fastq=False, sam=False, prefix='reads',
+            pairs=False, sep12=False):
         """Partition all reads into separate files
            Ideally this should be called after all sam files have been parsed
            This function will make a directory containing a number of files
@@ -367,6 +585,8 @@ class TaxonSegregator(object):
            sam: output segregated reads in sam format
            prefix: the name for the output files without extension (don't put
                 directories here, they are created automatically)
+           pairs: separate reads into paired and singleton reads
+           sep12: separate paired reads into read1 and read2 files
         """
         if not self.neighbours:
             self.getNeighbours()
@@ -385,53 +605,20 @@ class TaxonSegregator(object):
             except:
                 taxon_ranks = ()
 
-            if self._check_taxon_coverage(cluster.reads, minCount, minCoverage):
-                
-                complete_taxons[taxon_ranks].append(cluster.cutoff)
+            if self._check_taxon_coverage(cluster.first + cluster.second + cluster.singles, minCount, minCoverage):
 
                 dir_path = os.path.join(root, *taxon_ranks)
                 if not os.path.exists(dir_path):
                     os.makedirs(dir_path)
 
-                fafp = None
-                qualfp = None
-                fqfp = None
-                samfp = None
-                prefix = str(cluster.ref)
-                try:
-                    if fasta:
-                        fafp = open(os.path.join(dir_path,'%s_%.2f.fa' %
-                            (prefix, cluster.cutoff)), 'w')
-                    if qual:
-                        qualfp = open(os.path.join(dir_path,'%s_%.2f.fa.qual' %
-                            (prefix, cluster.cutoff)), 'w')
-                    if fastq:
-                        fqfp = open(os.path.join(dir_path,'%s_%.2f.fq' %
-                            (prefix, cluster.cutoff)), 'w')
-                    if sam:
-                        samfp = open(os.path.join(dir_path, '%s_%.2f.sam' %
-                            (prefix, cluster.cutoff)), 'w')
+                prefix = os.path.join(dir_path,'%s_%.2f' % (str(cluster.ref), cluster.cutoff))
+                suffixs = self._sam_to_fastx2(cluster, prefix, fasta=fasta, qual=qual,
+                        sep12=sep12, fastq=fastq, pairs=pairs)
 
-                    for aligned_read in cluster.reads:
-                        self._sam_to_fastx(aligned_read, fasta=fafp,
-                                qual=qualfp, fastq=fqfp)
-                        if sam:
-                            samfp.write('%s\n' % str(aligned_read))
-
-                finally:
-                    if fafp is not None: 
-                        fafp.close()
-                    if qualfp is not None:
-                        qualfp.close()
-                    if fqfp is not None:
-                        fqfp.close()
-                    if samfp is not None:
-                        samfp.close()
-            else:
-                incomplete_taxons[taxon_ranks].append(cluster.cutoff)
+                complete_taxons[prefix] = suffixs
 
         self.done_segregation = True
-        return complete_taxons, incomplete_taxons
+        return complete_taxons
 
     def parse_sam(self, sam):
         """iterate through the records in a samfile and place them into
@@ -531,13 +718,13 @@ class TaxonSegregator(object):
                     samfp = None
                     try:
                         if fasta:
-                            fafp = open(os.path.join(dir_path,'%s_%.2f.fa' %
+                            fafp = open(os.path.join(dir_path,'%s_%.2f.fasta' %
                                 (prefix, self.cutoffs[cutoff_index])), 'w')
                         if qual:
-                            qualfp = open(os.path.join(dir_path,'%s_%.2f.fa.qual' %
+                            qualfp = open(os.path.join(dir_path,'%s_%.2f.fasta.qual' %
                                 (prefix, self.cutoffs[cutoff_index])), 'w')
                         if fastq:
-                            fqfp = open(os.path.join(dir_path,'%s_%.2f.fq' %
+                            fqfp = open(os.path.join(dir_path,'%s_%.2f.fastq' %
                                 (prefix, self.cutoffs[cutoff_index])), 'w')
                         if sam:
                             samfp = open(os.path.join(dir_path, '%s_%.2f.sam' %

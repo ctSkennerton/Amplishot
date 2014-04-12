@@ -60,6 +60,7 @@ class SamRead(object):
         self.seq = fields[9]
         self.qlen = len(self.seq)
         self.qual = fields[10]
+        self.rlen = len(self.seq)
         self.tags = None
         self.tags_available = parseTags
         if parseTags:
@@ -150,6 +151,9 @@ class SamRead(object):
     def is_duplicate(self):
         return self.flag & 0x400 == 0x400
 
+    def is_suplementary_alignment(self):
+        return self.flag & 0x800 == 0x800
+
     def percent_identity(self):
         if not self.tags_available or not self.tags.has_key('NM'):
             raise AlignmentTagError('Cannot calculate percent identity as'\
@@ -169,6 +173,8 @@ class SamFileReader(object):
         super(SamFileReader, self).__init__()
         self.parse_tags = parseTags
         self.parse_header = parseHeader
+        self.references = {}
+        
         try:
             if parseString:
                 self.fp = f.splitlines()
@@ -189,6 +195,15 @@ class SamFileReader(object):
                 code, value = tag.split(':')
                 fields_dict[code] = value
             self.header[header_code] = fields_dict
+        elif header_code == 'SQ':
+            fields = line.split('\t')
+            fields_dict = dict()
+            for tag in fields[1:]:
+                code, value = tag.split(':')
+                print code, value
+                fields_dict[code] = value
+            #print "Adding reference: ", fields_dict['SN'], "with length:", fields_dict['LN']
+            self.references[fields_dict['SN']] = int(fields_dict['LN'])
         elif header_code != 'CO':
             fields = line.split('\t')
             fields_dict = dict()
@@ -217,3 +232,5 @@ class SamFileReader(object):
                     print 'malformed alignment.\nnumber of fields: %i\nline is: %s' % (len(fields), line)
                     raise SamFileError
                 yield SamRead(fields)
+    def close(self):
+        self.fp.close()

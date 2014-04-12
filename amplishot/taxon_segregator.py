@@ -90,7 +90,7 @@ class TaxonSegregator(object):
     un_re = re.compile('[\s\[\]\{\}]')
 
     def __init__(self, taxonfile, cutoffs=[0.8,0.87,0.92,0.98],
-            neighboursfile='/srv/db/gg/2013_05/gg_13_5_otus/dist/dist_97_otus.tsv'):
+            neighboursfile='/srv/db/gg/2013_05/gg_13_5_otus/dist/dist_99_otus.tsv'):
         """
            taxonfile: path to a file containing the mapping between reference
                       identifiers and the taxonomy string

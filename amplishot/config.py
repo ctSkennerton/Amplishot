@@ -129,6 +129,38 @@ class AmplishotConfig(object):
         for key, value in vars(args).items():
             if value is not None and key in self.data:
                 self.data[key] = value
+
+    def write_config(self):
+        # check for absolute paths; change them if they are not
+        self.data['input_raw_reads'] = [[os.path.abspath(e) for e in r] for r in\
+               self.data['input_raw_reads']]
+        current_time = time.strftime('%Y%m%d%H%M%S')
+        outfp = os.path.join(self.data['output_directory'], 'Amplishot_%s_config.yml' %
+                current_time)
+        with open(outfp, 'w') as fp:
+            fp.write(str(self))
+
+
+    def check_config_and_set_output(self, args):
+        if args.config is not None:
+            self.populate_from_config_file(open(args.config))
+            initial_config_str = str(self)
+        else:
+            initial_config_str = ''
+
+        self.populate_from_commandline(args)
+        try:
+            root_dir = self.data['output_directory']
+        except KeyError:
+            root_dir = self.data['output_directory'] = os.getcwd()
+
+        if not os.path.exists(root_dir):
+            os.makedirs(root_dir)
+
+        config_str = str(self)
+        if initial_config_str != config_str:
+            return True
+        return False
 ###############################################################################
 ###############################################################################
 ###############################################################################

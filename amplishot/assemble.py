@@ -143,7 +143,7 @@ def ray_constructor(workingdir, params=None,
         ret['contigs'] = os.path.join(params['-o'],"Contigs.fasta")
         return ret
     else:
-        raise RuntimeError("Ray failed to run. exit code = %d" % retcode)
+        raise RuntimeError("Ray failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(cmd)))
     #r = Ray(params=params, SuppressStdout=suppressStdout,
     #        SuppressStderr=suppressStderr, WorkingDir=workingdir,
     #        HALT_EXEC=False)

@@ -79,18 +79,26 @@ def demultiplex(args):
     pass
 
 
-def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30):
-    pairtig_file = os.path.join(pairtig_dir,
-        os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq')
-    with open(pairtig_file, 'wb') as fp:
-        panda = pandaseq.Pandaseq()
-        panda.Parameters['-f'].on(forward)
-        panda.Parameters['-r'].on(reverse)
-        panda.Parameters['-l'].on(minPairtigLen)
-        panda.Parameters['-o'].on(minOverlap)
-        panda.Parameters['-F'].on()
-        panda(stdout=fp, stderr=None)
-    return pairtig_file
+def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30,
+        threads=1):
+    #pairtig_file = os.path.join(pairtig_dir,
+    #    os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq')
+   # with open(pairtig_file, 'w+b') as fp:
+   #     panda = pandaseq.Pandaseq()
+   #     panda.Parameters['-f'].on(forward)
+   #     panda.Parameters['-r'].on(reverse)
+   #     panda.Parameters['-l'].on(minPairtigLen)
+   #     panda.Parameters['-o'].on(minOverlap)
+   #     panda.Parameters['-F'].on()
+   #     panda(stdout=fp, stderr=None)
+   # return pairtig_file
+   pear_basename =  os.path.join(pairtig_dir,
+           os.path.splitext(os.path.basename(forward))[0])
+   pear_cmd = "pear -f %s -r %s -o %s -n %d -v %d -j %d" % (forward, reverse,
+           pear_basename, minPairtigLen, minOverlap, threads )
+   with open(os.devnull, 'wb') as devnull:
+       subprocess.call(pear_cmd, shell=True, stdout=devnull, stderr=devnull)
+   return pear_basename + '.assembled.fastq'
 
 
 def filter_sam(args):
@@ -153,21 +161,27 @@ def generate_pairtigs(config, root_dir):
         len(config.data['input_raw_reads']) < config.data['threads'] else\
         config.data['threads']
 
-        panda_pool = multiprocessing.Pool(processes=panda_processes)
-        panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir),
-            dict(minPairtigLen=config.data['minimum_pairtig_length'],
-                minOverlap=config.data['pair_overlap_length']) ) for f, r in
-                config.data['input_raw_reads']]
+        panda_pool_results = []
+        for f, r in config.data['input_raw_reads']:
+            r = overlap(f, r, pairtig_dir, minPairtigLen=config.data['minimum_pairtig_length'],
+                minOverlap=config.data['pair_overlap_length'],
+                threads=config.data['threads'])
+            panda_pool_results.append(r)
+        #panda_pool = multiprocessing.Pool(processes=panda_processes)
+        #panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir),
+        #    dict(minPairtigLen=config.data['minimum_pairtig_length'],
+        #        minOverlap=config.data['pair_overlap_length']) ) for f, r in
+        #        config.data['input_raw_reads']]
 
-        panda_pool.close()
-        panda_pool.join()
-
-        for result in panda_pool_results:
-            pairtig_file = result.get()
+        #panda_pool.close()
+        #panda_pool.join()
+        for pairtig_file in panda_pool_results:
+        #for result in panda_pool_results:
+            #pairtig_file = result.get()
             with open(pairtig_file) as fp:
                 reads_counts.append(count_reads_in_file(fp))
-                r = result.get()
-            config.data['pairtig_read_files'].append(os.path.abspath(r))
+                #r = result.get()
+            config.data['pairtig_read_files'].append(os.path.abspath(pairtig_file))
     return reads_counts
 
 
@@ -216,6 +230,74 @@ def get_normalized_read_count(*args):
         normalized_read_count = x if x % 100 == 0 else x - 100 - x % 100
         return normalized_read_count
 
+def profile_only(config):
+    """Create a profile of the community without trying to perform an assembly
+        Steps:
+            1. Overlap reads (optional based on config)
+            2. Map reads
+            3. OTU table from mappping
+    """
+    root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
+
+    normalized_read_count = pair_and_read_count(config, root_dir)
+    indata = fixup_aliases(config)
+
+    for readfile, samplename in indata:
+        logging.info('processing %s...', readfile)
+        sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
+        bowtie_params = {
+            '-x': config.data['mapper_database'],
+            '-S': sample_mapping_file,
+            '-p': config.data['threads'],
+            #'-u': 10000,
+            }
+        if isinstance(readfile, list):
+            bowtie_params['-1'] = readfile[0]
+            bowtie_params['-2'] = readfile[1]
+        else:
+            bowtie_params['-U'] = readfile
+
+        bowtie_results = map_to_reference( params=bowtie_params)
+
+def pair_and_read_count(config, root_dir):
+    # generate fragment consensus sequences - pandaseq
+    read_counts = []
+    if 'skip_pairtigs' not in config.data:
+        read_counts = generate_pairtigs(config, root_dir)
+        # take the smallest number of pairtigs and round down to the nearest 100
+    else:
+        for rrf in config.data['input_raw_reads']:
+            if isinstance(rrf, list):
+                infile = rrf[0]
+            else:
+                infile = rrf
+            with gzip.open(infile) as fd:
+                read_counts.append(count_reads_in_file(fd))
+
+    if len(read_counts) > 1:
+        x = min(read_counts)
+        return x if x % 100 == 0 else x - 100 - x % 100
+    else:
+        return reads_counts[0]
+
+
+def fixup_aliases(config):
+    if 'aliases' in config.data:
+        if 'skip_pairtigs' not in config.data:
+            if len(config.data['aliases']) != len(config.data['input_raw_reads']):
+                logging.warn('There are a different number of aliases and input'\
+                    'files. Aliases will not be used')
+                indata = make_aliases(config)
+            else:
+                indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
+        else:
+            indata = zip(config.data['input_raw_reads'], config.data['aliases'])
+    else:
+        indata = make_aliases(config)
+        
+    return indata
+
+
 def pipeline(config):
     """Run all the steps of amplishot
     """
@@ -249,11 +331,12 @@ def pipeline(config):
 
     # taxonomy assigner
     taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'],
-            cutoffs=config.data['mapping_similarity_cutoffs'])
+            cutoffs=config.data['mapping_similarity_cutoffs'],
+            neighboursfile=config.data['neighbours_file'])
 
     if 'aliases' in config.data:
         if 'skip_pairtigs' not in config.data:
-            if len(config.data['aliases']) != len(config.data['input_raw_data']):
+            if len(config.data['aliases']) != len(config.data['input_raw_reads']):
                 logging.warn('There are a different number of aliases and input'\
                     'files. Aliases will not be used')
                 indata = make_aliases(config)
@@ -378,12 +461,12 @@ def pipeline(config):
         for read_file, sample_name in indata:
             _params = {'-p': config.data['threads'], '-u': normalized_read_count}
             if isinstance(readfile, list):
-                _params['-1'] = readfile[0]
-                _params['-2'] = readfile[1]
+                _params['-1'] = read_file[0]
+                _params['-2'] = read_file[1]
             else:
-                _params['-U'] = readfile
-            abundance.generate_abundance(alias=sample_name,
-                    params=_params)
+                _params['-U'] = read_file
+            abundance.generate_abundance(sample_name,
+                    params=_params, tmpFile=False)
 
         abundance.generate_biom_table()
         abundance.add_metadata(observation_metadata=observation_metadata)
@@ -397,37 +480,6 @@ def pipeline(config):
 
     logging.info('Done.')
 
-def write_config(config):
-    # check for absolute paths; change them if they are not
-    config.data['input_raw_reads'] = [[os.path.abspath(e) for e in r] for r in\
-            config.data['input_raw_reads']]
-    current_time = time.strftime('%Y%m%d%H%M%S')
-    outfp = os.path.join(config.data['output_directory'], 'Amplishot_%s_config.yml' %
-            current_time)
-    with open(outfp, 'w') as fp:
-        fp.write(str(config))
-
-
-def check_config_and_set_output(args, config):
-    if args.config is not None:
-        config.populate_from_config_file(open(args.config))
-        initial_config_str = str(config)
-    else:
-        initial_config_str = ''
-
-    config.populate_from_commandline(args)
-    try:
-        root_dir = config.data['output_directory']
-    except KeyError:
-        root_dir = config.data['output_directory'] = os.getcwd()
-
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir)
-
-    config_str = str(config)
-    if initial_config_str != config_str:
-        return True
-    return False
 
 ###############################################################################
 ###############################################################################
@@ -533,7 +585,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    write_new_config = check_config_and_set_output(args, config)
+    write_new_config = config.check_config_and_set_output(args)
 #-------------------
     # set up the logger
     if args.logger_quiet is not None:

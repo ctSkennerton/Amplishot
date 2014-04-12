@@ -99,7 +99,7 @@ class OTUTableGenerator(object):
 
         os.remove(tmp.name)
 
-    def generate_abundance(self, alias=None, params=None):
+    def generate_abundance(self, alias, params=None, tmpFile=True):
         """ Take in a set of reads and map them with bowtie to the rep set
         reads: should be a list of paths to files containing reads
         Would have been one of the same ones that was originally
@@ -107,16 +107,19 @@ class OTUTableGenerator(object):
         alias: name to give this file in the OTU table,  default is to take the
         basename of the reads file minus the extension
         """
-        if alias is None:
-            alias = os.path.splitext(os.path.basename(reads))[0]
         self.aliases.append(alias)
 
-        tmp = tempfile.TemporaryFile()
+        if tmpFile:
+            tmp = tempfile.TemporaryFile()
+        else:
+            tmp = open(os.path.join(self.outdir,alias + "_final_mapping.sam"), 'w+b')
 
         results = self._make_sam(params, stdout=tmp)
         tmp.seek(0)
         self._parse_sam(tmp)
         results.cleanUp()
+        if not tmpFile:
+            tmp.close()
 
     def generate_biom_table(self, sample_metadata=None, observation_metadata=None):
         # trim the array if needed

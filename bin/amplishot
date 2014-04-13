@@ -81,24 +81,39 @@ def demultiplex(args):
 
 def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30,
         threads=1):
-    #pairtig_file = os.path.join(pairtig_dir,
-    #    os.path.splitext(os.path.basename(forward))[0] + '.pairtigs.fq')
-   # with open(pairtig_file, 'w+b') as fp:
-   #     panda = pandaseq.Pandaseq()
-   #     panda.Parameters['-f'].on(forward)
-   #     panda.Parameters['-r'].on(reverse)
-   #     panda.Parameters['-l'].on(minPairtigLen)
-   #     panda.Parameters['-o'].on(minOverlap)
-   #     panda.Parameters['-F'].on()
-   #     panda(stdout=fp, stderr=None)
-   # return pairtig_file
-   pear_basename =  os.path.join(pairtig_dir,
+    pear_basename =  os.path.join(pairtig_dir,
            os.path.splitext(os.path.basename(forward))[0])
-   pear_cmd = "pear -f %s -r %s -o %s -n %d -v %d -j %d" % (forward, reverse,
+    # pear doesn't like gziped files therefore unzip them at teh start
+    gzip_cmd = 'gzip -dc %s > %s'
+    if forward[-2:] == 'gz':
+        tmp_forward = os.path.join(pairtig_dir, '__ft.fastq')
+
+        retcode = subprocess.call(gzip_cmd % (forward, tmp_forward), shell=True)
+        if retcode != 0:
+            raise RuntimeError("unzipping the forwad reads was unsuccessful")
+        forward = tmp_forward
+
+    if reverse[-2:] == 'gz':
+        tmp_reverse = os.path.join(pairtig_dir, '__rt.fastq')
+        retcode = subprocess.call(gzip_cmd % (reverse, tmp_reverse), shell=True)
+        if retcode != 0:
+            raise RuntimeError("unzipping the reverse reads was unsuccessful")
+        reverse = tmp_reverse
+
+    pear_cmd = "pear -f %s -r %s -o %s -n %d -v %d -j %d" % (forward, reverse,
            pear_basename, minPairtigLen, minOverlap, threads )
-   with open(os.devnull, 'wb') as devnull:
-       subprocess.call(pear_cmd, shell=True, stdout=devnull, stderr=devnull)
-   return pear_basename + '.assembled.fastq'
+    with open(os.devnull, 'wb') as devnull:
+        retcode = subprocess.call(pear_cmd, shell=True, stdout=devnull, stderr=devnull)
+        if retcode != 0:
+            raise RuntimeError("pear did not exit correctly: %d.\n%s\n" %(retcode, pear_cmd))
+
+    # clean up the temp files
+    if forward == os.path.join(pairtig_dir, '__ft.fastq'):
+        os.remove(forward)
+    if reverse == os.path.join(pairtig_dir, '__rt.fastq'):
+        os.remove(reverse)
+
+    return pear_basename + '.assembled.fastq'
 
 
 def filter_sam(args):
@@ -298,54 +313,11 @@ def fixup_aliases(config):
     return indata
 
 
-def pipeline(config):
-    """Run all the steps of amplishot
-    """
-    root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
-
-    # generate fragment consensus sequences - pandaseq
-    read_counts = []
-    if 'skip_pairtigs' not in config.data:
-        read_counts = generate_pairtigs(config, root_dir)
-        # take the smallest number of pairtigs and round down to the nearest 100
-    else:
-        for rrf in config.data['input_raw_reads']:
-            if isinstance(rrf, list):
-                infile = rrf[0]
-            else:
-                infile = rrf
-            with gzip.open(infile) as fd:
-                read_counts.append(count_reads_in_file(fd))
-
-    if len(read_counts) > 1:
-        x = min(read_counts)
-        normalized_read_count = x if x % 100 == 0 else x - 100 - x % 100
-    else:
-        normalized_read_count = reads_counts[0]
-
-    # map overlapped fragments with bowtie
-    # create the file for all the full-length seqs
-    full_length_seqs =\
-    open(os.path.join(root_dir,
-        config.data.get('reconstruced_seq_file', 'full_length_sequences.fa')), 'w')
-
+def segregate_and_assemble(config, indata, root_dir):
     # taxonomy assigner
     taxseg = amplishot.taxon_segregator.TaxonSegregator(config.data['taxonomy_file'],
             cutoffs=config.data['mapping_similarity_cutoffs'],
             neighboursfile=config.data['neighbours_file'])
-
-    if 'aliases' in config.data:
-        if 'skip_pairtigs' not in config.data:
-            if len(config.data['aliases']) != len(config.data['input_raw_reads']):
-                logging.warn('There are a different number of aliases and input'\
-                    'files. Aliases will not be used')
-                indata = make_aliases(config)
-            else:
-                indata = zip(config.data['pairtig_read_files'], config.data['aliases'])
-        else:
-            indata = zip(config.data['input_raw_reads'], config.data['aliases'])
-    else:
-        indata = make_aliases(config)
 
     # assembly wrapper
     wrapper = assemble.AssemblyWrapper(config.data['assembly_method'], config,
@@ -359,6 +331,7 @@ def pipeline(config):
             '-p': config.data['threads'],
             #'-u': 10000,
             }
+
         if isinstance(readfile, list):
             bowtie_params['-1'] = readfile[0]
             bowtie_params['-2'] = readfile[1]
@@ -402,6 +375,26 @@ def pipeline(config):
                 del good_taxons[()]
 
             wrapper(good_taxons, samplename)
+
+    return wrapper
+
+def pipeline(config):
+    """Run all the steps of amplishot
+    """
+    root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
+
+    # generate fragment consensus sequences - pandaseq
+    normalized_read_count = pair_and_read_count(config, root_dir)
+
+    # map overlapped fragments with bowtie
+    # create the file for all the full-length seqs
+    full_length_seqs =\
+    open(os.path.join(root_dir,
+        config.data.get('reconstruced_seq_file', 'full_length_sequences.fa')), 'w')
+
+    indata = fixup_aliases(config)
+
+    wrapper = segregate_and_assemble(config, indata, root_dir)
 
     # check to see if there are any full length sequences
     # if not we finish here

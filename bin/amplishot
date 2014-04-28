@@ -45,10 +45,11 @@ import multiprocessing
 from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble,\
-        conserved_sequences
+        OrientationChecker
 from amplishot.app import bowtie, pandaseq, sortmerna
 from amplishot.config import AmplishotConfig
 from amplishot.app.cd_hit import CD_HIT_EST
+from amplishot.util import reverse_complement
 from cogent.app.util import FilePath
 ###############################################################################
 
@@ -144,9 +145,10 @@ def make_aliases(config):
 
 
 def orientate(fullLengthSeqs):
-    cs = conserved_sequences.ConservedSequences()
+    cs = OrientationChecker.OrientationChecker()
     for name in fullLengthSeqs.keys():
-        fullLengthSeqs[name] = cs.orientate(fullLengthSeqs[name])
+        if cs.isSeqReversed(fullLengthSeqs[name]):
+            fullLengthSeqs[name] = reverse_complement(fullLengthSeqs[name])
     
     return fullLengthSeqs
 
@@ -293,7 +295,7 @@ def pair_and_read_count(config, root_dir):
         x = min(read_counts)
         return x if x % 100 == 0 else x - 100 - x % 100
     else:
-        return reads_counts[0]
+        return read_counts[0]
 
 
 def fixup_aliases(config):
@@ -403,14 +405,14 @@ def pipeline(config):
     else:
         # fix up the orientation of the full-length sequences to they are all in
         # the forward direction then write them to file
-        #logging.info("Orientating full-length sequences...")
-        #wrapper.fullLengthSeqs = orientate(wrapper.fullLengthSeqs)
-        if len(wrapper.fullLengthQuals):
-            flq = open(full_length_seqs.name + '.qual', 'w')
-            wrapper.write(full_length_seqs, qfp=flq)
-            flq.close()
-        else:
-            wrapper.write(full_length_seqs)
+        logging.info("Orientating full-length sequences...")
+        wrapper.fullLengthSeqs = orientate(wrapper.fullLengthSeqs)
+        #if len(wrapper.fullLengthQuals):
+        #    flq = open(full_length_seqs.name + '.qual', 'w')
+        #    wrapper.write(full_length_seqs, qfp=flq)
+        #    flq.close()
+        #else:
+        wrapper.write(full_length_seqs)
 
         full_length_seqs.close()
         # pick OTUs and representative set
@@ -453,7 +455,7 @@ def pipeline(config):
         #generate abundance based on coverage and create OTU table
         for read_file, sample_name in indata:
             _params = {'-p': config.data['threads'], '-u': normalized_read_count}
-            if isinstance(readfile, list):
+            if isinstance(read_file, list):
                 _params['-1'] = read_file[0]
                 _params['-2'] = read_file[1]
             else:

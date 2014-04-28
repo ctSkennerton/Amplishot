@@ -51,7 +51,50 @@ from amplishot.config import AmplishotConfig
 from amplishot.app.cd_hit import CD_HIT_EST
 from amplishot.util import reverse_complement
 from cogent.app.util import FilePath
+from qiime.align_seqs import alignment_module_names,alignment_method_constructors,\
+    pairwise_alignment_methods, CogentAligner, compute_min_alignment_length
 ###############################################################################
+
+def align_seqs(config, input_fasta_fp):
+    
+    if not config.data.get('aligner_template', None):
+        logging.error('PyNAST requires a template alignment to be passed via the \"aligner_template\" option')
+        return None
+
+    input_seqs_filepath = input_fasta_fp
+    alignment_method = 'PyNAST'
+    output_dir = os.path.join(config.data['output_directory'],
+            'repset_aligned')
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    
+    # compute the minimum alignment length if a negative value was
+    # provided (the default)
+    min_length = config.data['minimum_reconstruction_length']
+
+    
+    result_path = os.path.join(output_dir, "repset_aligned.fasta")
+    log_path = os.path.join(output_dir, "repset_aligned_log.txt")
+    failure_path = os.path.join(output_dir, "repset_failures.fasta")
+ 
+    # try/except was causing problems here, so replacing with
+    # an explicit check
+    # define the aligner params
+    aligner_constructor =\
+    alignment_method_constructors['pynast']
+    aligner_type = alignment_method
+    params = {'min_len': min_length,\
+              'min_pct': 0.6,\
+              'template_filepath': config.data['aligner_template'],\
+              'blast_db': None,
+              'pairwise_alignment_method': 'blast'}
+    # build the aligner object
+    aligner = aligner_constructor(params)
+    # apply the aligner
+    aligner(input_seqs_filepath,result_path=result_path,\
+     log_path=log_path,failure_path=failure_path)
+
+    return result_path
 
 
 def map_to_reference(params=None, stderr=None,
@@ -385,7 +428,7 @@ def pipeline(config):
     """
     root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
 
-    # generate fragment consensus sequences - pandaseq
+    # generate fragment consensus sequences
     normalized_read_count = pair_and_read_count(config, root_dir)
 
     # map overlapped fragments with bowtie
@@ -407,11 +450,6 @@ def pipeline(config):
         # the forward direction then write them to file
         logging.info("Orientating full-length sequences...")
         wrapper.fullLengthSeqs = orientate(wrapper.fullLengthSeqs)
-        #if len(wrapper.fullLengthQuals):
-        #    flq = open(full_length_seqs.name + '.qual', 'w')
-        #    wrapper.write(full_length_seqs, qfp=flq)
-        #    flq.close()
-        #else:
         wrapper.write(full_length_seqs)
 
         full_length_seqs.close()
@@ -419,10 +457,18 @@ def pipeline(config):
         out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
                 outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
                 similarity=config.data['otu_clustering_similarity'])
+
         rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
                 outputFilePath=os.path.join(root_dir,
                     config.data.get('repset_output_file',
                         'full_length_sequences.repset.fa')))
+        
+        # align the repset and call chimeras
+        logging.info("Aligning rep set...")
+        if align_seqs(config, rep_set) is None:
+            print "It doesn't work"
+            return 1
+
         rep_set_seqs = dict()
         with open(rep_set) as fp:
             fxparser = amplishot.parse.fastx.FastxReader(fp)

@@ -53,6 +53,7 @@ from amplishot.util import reverse_complement
 from cogent.app.util import FilePath
 from qiime.align_seqs import alignment_module_names,alignment_method_constructors,\
     pairwise_alignment_methods, CogentAligner, compute_min_alignment_length
+from qiime.identify_chimeric_seqs import chimeraSlayer_identify_chimeras
 ###############################################################################
 
 def align_seqs(config, input_fasta_fp):
@@ -95,6 +96,18 @@ def align_seqs(config, input_fasta_fp):
      log_path=log_path,failure_path=failure_path)
 
     return result_path
+
+
+def check_chimeras(config, input_filepath):
+    #output_fp = os.path.join(config.data['output_directory'],
+    #        'repset_aligned', 'chimeras.txt')
+
+    return chimeraSlayer_identify_chimeras(input_filepath, 
+                                 output_fp=None,
+                                 db_NAST_fp=config.data['aligner_template'],
+                                 min_div_ratio=None,
+                                 keep_intermediates=False)
+
 
 
 def map_to_reference(params=None, stderr=None,
@@ -465,9 +478,12 @@ def pipeline(config):
         
         # align the repset and call chimeras
         logging.info("Aligning rep set...")
-        if align_seqs(config, rep_set) is None:
-            print "It doesn't work"
-            return 1
+        aligned_repset = align_seqs(config, rep_set)
+        logging.info("Checking for chimeras in rep set...")
+        chimeras = check_chimeras(config, aligned_repset)
+        logging.info('there are %d chimeras found' % len(chimeras))
+        for _chim in chimeras:
+            logging.info("\t%s" % str(_chim))
 
         rep_set_seqs = dict()
         with open(rep_set) as fp:

@@ -66,6 +66,7 @@ pairtig_read_files: []
 aliases: null # names to give your files in the output.  Must be the same length as 'input_raw_files', comment out the null on this line and uncomment the following lines
     #- sample1
     #- sample2
+aligner_template: null
 minimum_pairtig_length: 350 # minimum length of the overlapped pairs
 pair_overlap_length: 30 # mimimum length of the overlap
 mapper: bowtie # program used for read mapping 

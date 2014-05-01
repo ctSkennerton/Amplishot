@@ -482,15 +482,24 @@ def pipeline(config):
         logging.info("Checking for chimeras in rep set...")
         chimeras = check_chimeras(config, aligned_repset)
         logging.info('there are %d chimeras found' % len(chimeras))
-        for _chim in chimeras:
-            logging.info("\t%s" % str(_chim))
+        chimera_ids = set()
+        if len(chimeras) > 0:
+            logging.info('removing chimeras from rep set...')
+            for _chim in chimeras:
+                #logging.info("\t%s" % str(_chim))
+                chimera_ids.add(_chim[0])
 
         rep_set_seqs = dict()
         with open(rep_set) as fp:
             fxparser = amplishot.parse.fastx.FastxReader(fp)
-            for name, seq, qual in fxparser.parse():
+            for name, seq, qual in fxparser.parse(
+                    callback=amplishot.parse.fastx.not_include,
+                    headers=chimera_ids):
                 rep_set_seqs[name] = seq
-
+        with open(rep_set, 'w') as fp:
+            for name, seq in rep_set_seqs.items():
+                fp.write('>%s\n%s\n' % (name, seq))
+                
         logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
 
         #assign taxonomy

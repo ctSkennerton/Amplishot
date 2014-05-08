@@ -36,7 +36,6 @@ import argparse
 import sys
 import tempfile
 import os
-import time
 import shutil
 import subprocess
 import textwrap
@@ -439,7 +438,7 @@ def segregate_and_assemble(config, indata, root_dir):
 def pipeline(config):
     """Run all the steps of amplishot
     """
-    root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
+    root_dir = config.data['output_directory']
 
     # generate fragment consensus sequences
     normalized_read_count = pair_and_read_count(config, root_dir)
@@ -669,7 +668,7 @@ if __name__ == '__main__':
 
     args.func(config)
     if write_new_config:
-        write_config(config)
+        config.write_config()
 
 
 ###############################################################################

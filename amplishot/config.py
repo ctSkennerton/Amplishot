@@ -34,6 +34,7 @@ __status__ = "Development"
 import sys
 import os
 import yaml
+import time
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
@@ -99,6 +100,12 @@ phrap:
 blast:
     blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
 '''
+class AmplishotConfigError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
+
 class AmplishotConfig(object):
     """ Class for reading the config file
         The Amplishot config file in written in YAML and contains all of the
@@ -133,14 +140,18 @@ class AmplishotConfig(object):
 
     def write_config(self):
         # check for absolute paths; change them if they are not
-        self.data['input_raw_reads'] = [[os.path.abspath(e) for e in r] for r in\
-               self.data['input_raw_reads']]
         current_time = time.strftime('%Y%m%d%H%M%S')
         outfp = os.path.join(self.data['output_directory'], 'Amplishot_%s_config.yml' %
                 current_time)
         with open(outfp, 'w') as fp:
             fp.write(str(self))
 
+    def _set_path_to_absolute(self, fp):
+        fp = os.path.expanduser(fp)
+        fp = os.path.abspath(fp)
+        if not os.path.exists(fp):
+            raise AmplishotConfigError('cannot find file: %s' % fp)
+        return fp
 
     def check_config_and_set_output(self, args):
         if args.config is not None:
@@ -151,12 +162,26 @@ class AmplishotConfig(object):
 
         self.populate_from_commandline(args)
         try:
-            root_dir = self.data['output_directory']
+            root_dir = self.data['output_directory'] =\
+                self._set_path_to_absolute(self.data['output_directory'])
         except KeyError:
             root_dir = self.data['output_directory'] = os.getcwd()
 
         if not os.path.exists(root_dir):
             os.makedirs(root_dir)
+
+        for i in range(len(self.data['input_raw_reads'])):
+            f = self.data['input_raw_reads'][i]
+            if isinstance(f, list):
+                if len(f) != 2:
+                    raise AmplishotConfigError('The value for each\
+                            input_raw_read line must be either a single file\
+                            path or a list of two files, one for each end of\
+                            the fragment')
+                f[0] = self._set_path_to_absolute(f[0])
+                f[1] = self._set_path_to_absolute(f[1])
+            else:
+                f = self._set_path_to_absolute(f)
 
         config_str = str(self)
         if initial_config_str != config_str:

@@ -46,7 +46,7 @@ import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble,\
         OrientationChecker
 from amplishot.app import bowtie, pandaseq, sortmerna
-from amplishot.config import AmplishotConfig
+from amplishot.config import AmplishotConfig, AmplishotConfigError
 from amplishot.app.cd_hit import CD_HIT_EST
 from amplishot.util import reverse_complement
 from cogent.app.util import FilePath
@@ -57,10 +57,15 @@ from qiime.identify_chimeric_seqs import chimeraSlayer_identify_chimeras
 
 def align_seqs(config, input_fasta_fp):
     
-    if not config.data.get('aligner_template', None):
-        logging.error('PyNAST requires a template alignment to be passed via the \"aligner_template\" option')
-        return None
+    try:
+        template_alignment = config.data['aligner_template']
+    except KeyError:
+        logging.warning('\'aligner_termplate\' not specified, but required for \
+                alignment step. PyNAST will not be executed and the \
+                reconstructed sequences will not be aligned or chimera checked')
+        raise AmplishotConfigError()
 
+    logging.info("Aligning rep set...")
     input_seqs_filepath = input_fasta_fp
     alignment_method = 'PyNAST'
     output_dir = os.path.join(config.data['output_directory'],
@@ -85,7 +90,7 @@ def align_seqs(config, input_fasta_fp):
     aligner_type = alignment_method
     params = {'min_len': min_length,\
               'min_pct': 0.6,\
-              'template_filepath': config.data['aligner_template'],\
+              'template_filepath': template_alignment,\
               'blast_db': None,
               'pairwise_alignment_method': 'blast'}
     # build the aligner object
@@ -208,21 +213,8 @@ def orientate(fullLengthSeqs):
     return fullLengthSeqs
 
 
-def count_reads_in_file(fp):
-    parser = amplishot.parse.fastx.FastxReader(fp)
-    read_count = 0
-    for name, seq, qual in parser.parse():
-        read_count += 1
-    return read_count
-
-
 def generate_pairtigs(config, root_dir):
-    reads_counts = []
-    if len(config.data['pairtig_read_files']) > 0:
-        for pairtig_file in config.data['pairtig_read_files']:
-            with open(pairtig_file) as fp:
-                reads_counts.append(count_reads_in_pairtig_file(fp))
-    else:
+    if len(config.data['pairtig_read_files']) != len(config.data['raw_input_reads']):
         pairtig_dir = os.path.join(root_dir, 'pairtigs')
         if not os.path.exists(pairtig_dir):
             os.mkdir(pairtig_dir)
@@ -239,118 +231,14 @@ def generate_pairtigs(config, root_dir):
                 minOverlap=config.data['pair_overlap_length'],
                 threads=config.data['threads'])
             panda_pool_results.append(r)
-        #panda_pool = multiprocessing.Pool(processes=panda_processes)
-        #panda_pool_results = [panda_pool.apply_async(overlap, (f, r, pairtig_dir),
-        #    dict(minPairtigLen=config.data['minimum_pairtig_length'],
-        #        minOverlap=config.data['pair_overlap_length']) ) for f, r in
-        #        config.data['input_raw_reads']]
-
-        #panda_pool.close()
-        #panda_pool.join()
         for pairtig_file in panda_pool_results:
-        #for result in panda_pool_results:
-            #pairtig_file = result.get()
-            with open(pairtig_file) as fp:
-                reads_counts.append(count_reads_in_file(fp))
-                #r = result.get()
             config.data['pairtig_read_files'].append(os.path.abspath(pairtig_file))
-    return reads_counts
 
 
-def extract_from_metagenome(read1, read2=None, outfile='./rrna', db=None):
-    """Get reads from marker genes from a bulk metagenome
-    """
-    try:
-        ndb = len(db)
-    except:
-        print "no SortMeRNA databases specified "
-
-    if read2:
-        # have to interleave the files
-        smr_in = tempfile.NamedTemporaryFile(delete=False)
-        with gzip.open(read1), gzip.open(read2) as fp1, fp2:
-            r1 = amplishot.parse.fastx.FastxReader(fp1)
-            r2 = amplishot.parse.fastx.FaxtxReader(fp2)
-            for name1, seq1, qual1 in r1.parse():
-                name2, seq2, qual2 = r2.parse()
-                if qual1:
-                    smr_in.write("@%s\n%s\n+\n%s\n" % (name1, seq1, qual1))
-                    smr_in.write("@%s\n%s\n+\n%s\n" % (name2, seq2, qual2))
-                else:
-                    smr_in.write(">%s\n%s\n" % (name1, seq1))
-                    smr_in.write(">%s\n%s\n" % (name2, seq2))
-        smr_in.close()
-        smr = sortmerna.Sortmerna()
-        smr.Parameters['--pair-in'].on()
-        smr.Parameters['--accept'].on(outfile)
-        smr.Parameters['--I'].on(smr_in.name)
-    else:
-        smr_in = read1
-
-
-def get_normalized_read_count(*args):
-    ''' given a list of open file objects, counts the number of fasta/fastq
-    records and return the smallest number rounded bound to the nearest 100
-    '''
-    c = []
-    for fd in args:
-        c.append( count_reads_in_file(fd))
-    x = min(c)
-    if len(c) == 1:
-        return x
-    else:
-        normalized_read_count = x if x % 100 == 0 else x - 100 - x % 100
-        return normalized_read_count
-
-def profile_only(config):
-    """Create a profile of the community without trying to perform an assembly
-        Steps:
-            1. Overlap reads (optional based on config)
-            2. Map reads
-            3. OTU table from mappping
-    """
-    root_dir = config.data['output_directory'] = os.path.abspath(config.data['output_directory'])
-
-    normalized_read_count = pair_and_read_count(config, root_dir)
-    indata = fixup_aliases(config)
-
-    for readfile, samplename in indata:
-        logging.info('processing %s...', readfile)
-        sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
-        bowtie_params = {
-            '-x': config.data['mapper_database'],
-            '-S': sample_mapping_file,
-            '-p': config.data['threads'],
-            #'-u': 10000,
-            }
-        if isinstance(readfile, list):
-            bowtie_params['-1'] = readfile[0]
-            bowtie_params['-2'] = readfile[1]
-        else:
-            bowtie_params['-U'] = readfile
-
-        bowtie_results = map_to_reference( params=bowtie_params)
-
-def pair_and_read_count(config, root_dir):
+def pair_reads(config, root_dir):
     # generate fragment consensus sequences - pandaseq
-    read_counts = []
     if 'skip_pairtigs' not in config.data:
-        read_counts = generate_pairtigs(config, root_dir)
-        # take the smallest number of pairtigs and round down to the nearest 100
-    else:
-        for rrf in config.data['input_raw_reads']:
-            if isinstance(rrf, list):
-                infile = rrf[0]
-            else:
-                infile = rrf
-            with gzip.open(infile) as fd:
-                read_counts.append(count_reads_in_file(fd))
-
-    if len(read_counts) > 1:
-        x = min(read_counts)
-        return x if x % 100 == 0 else x - 100 - x % 100
-    else:
-        return read_counts[0]
+        generate_pairtigs(config, root_dir)
 
 
 def fixup_aliases(config):
@@ -441,7 +329,7 @@ def pipeline(config):
     root_dir = config.data['output_directory']
 
     # generate fragment consensus sequences
-    normalized_read_count = pair_and_read_count(config, root_dir)
+    pair_reads(config, root_dir)
 
     # map overlapped fragments with bowtie
     # create the file for all the full-length seqs
@@ -476,17 +364,19 @@ def pipeline(config):
                         'full_length_sequences.repset.fa')))
         
         # align the repset and call chimeras
-        logging.info("Aligning rep set...")
-        aligned_repset = align_seqs(config, rep_set)
-        logging.info("Checking for chimeras in rep set...")
-        chimeras = check_chimeras(config, aligned_repset)
-        logging.info('there are %d chimeras found' % len(chimeras))
         chimera_ids = set()
-        if len(chimeras) > 0:
-            logging.info('removing chimeras from rep set...')
-            for _chim in chimeras:
-                #logging.info("\t%s" % str(_chim))
-                chimera_ids.add(_chim[0])
+        try:
+            aligned_repset = align_seqs(config, rep_set)
+            logging.info("Checking for chimeras in rep set...")
+            chimeras = check_chimeras(config, aligned_repset)
+            logging.info('there are %d chimeras found' % len(chimeras))
+            if len(chimeras) > 0:
+                logging.info('removing chimeras from rep set...')
+                for _chim in chimeras:
+                    #logging.info("\t%s" % str(_chim))
+                    chimera_ids.add(_chim[0])
+        except AmplishotConfigError:
+            pass
 
         rep_set_seqs = dict()
         with open(rep_set) as fp:
@@ -524,7 +414,7 @@ def pipeline(config):
                 root_dir)
         #generate abundance based on coverage and create OTU table
         for read_file, sample_name in indata:
-            _params = {'-p': config.data['threads'], '-u': normalized_read_count}
+            _params = {'-p': config.data['threads']}
             if isinstance(read_file, list):
                 _params['-1'] = read_file[0]
                 _params['-2'] = read_file[1]
@@ -537,11 +427,6 @@ def pipeline(config):
         abundance.add_metadata(observation_metadata=observation_metadata)
         with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
             fp.write(str(abundance))
-
-        if config.data['normalize_otu_table']:
-            abundance.normalize()
-            with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
-                fp.write(str(abundance))
 
     logging.info('Done.')
 

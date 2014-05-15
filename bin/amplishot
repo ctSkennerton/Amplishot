@@ -428,6 +428,10 @@ def pipeline(config):
         with open(os.path.join(root_dir, 'abundances.biom'), 'w') as fp:
             fp.write(str(abundance))
 
+        abundance.normalize()
+        with open(os.path.join(root_dir, 'abundances.normalized.biom'), 'w') as fp:
+            fp.write(str(abundance))
+
     logging.info('Done.')
 
 

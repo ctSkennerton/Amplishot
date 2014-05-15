@@ -154,13 +154,11 @@ class AmplishotConfig(object):
         return fp
 
     def check_config_and_set_output(self, args):
-        if args.config is not None:
-            self.populate_from_config_file(open(args.config))
-            initial_config_str = str(self)
-        else:
-            initial_config_str = ''
 
         self.populate_from_commandline(args)
+        if args.config is not None:
+            self.populate_from_config_file(open(args.config))
+
         try:
             root_dir = self.data['output_directory'] =\
                 self._set_path_to_absolute(self.data['output_directory'])
@@ -183,10 +181,7 @@ class AmplishotConfig(object):
             else:
                 f = self._set_path_to_absolute(f)
 
-        config_str = str(self)
-        if initial_config_str != config_str:
-            return True
-        return False
+        return True
 ###############################################################################
 ###############################################################################
 ###############################################################################

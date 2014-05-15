@@ -550,106 +550,102 @@ def pipeline(config):
 ###############################################################################
 ###############################################################################
 ###############################################################################
+class CommaStringToList(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        l = values.split(',')
+        setattr(namespace, self.dest, map(float, l))
+
 
 if __name__ == '__main__':
-#-------------------
-    # initialise the config parser
     config = AmplishotConfig()
 
-#--------------------
-    #place options that will be used for all subparsers here
-    common_options_parser = argparse.ArgumentParser(add_help=False)
-    common_options_parser.add_argument('-c', '--config-file', dest='config',
+    parser = argparse.ArgumentParser( formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+
+    parser.add_argument('-c', '--config-file', dest='config',
             #default=os.path.join(os.path.expanduser('~'),'.amplishot_config.yml'),
             help='specify a custom location to the amplishot configuration\
             file. By default all values stored in the config file will\
             be used unless they are overwritten by command-line options')
-    common_options_parser.add_argument('--quiet', dest='logger_quiet',
+    parser.add_argument('--quiet', dest='logger_quiet',
             action='store_const', const='CRITICAL', help='change the log verbosity so that only'\
                     'the most critical messages are reported')
-    common_options_parser.add_argument('--log-level', choices=['DEBUG', 'INFO',
-        'WARNING', 'ERROR', 'CRITICAL'], dest='log_level',
-        help='Set the log level')
-    common_options_parser.add_argument('--log-file', dest='log_file',
-            help='Change the destination of logging.')
 
-#--------------------
-    # create a threads parser specifically to hold that option, then we can
-    # pass it to the parsers that need it
-    threads_parser = argparse.ArgumentParser(add_help=False)
-    threads_parser.add_argument('-t', '--threads', type=int, dest='threads',
+    parser.add_argument('--log_level', choices=['DEBUG', 'INFO',
+        'WARNING', 'ERROR', 'CRITICAL'], dest='log_level', default='INFO',
+        help='Set the log level')
+
+    parser.add_argument('-t', '--threads', type=int, dest='threads', default=1,
              help='The number of threads to use')
 
-#--------------------
-    # top level parser for running the pipeline
-    # amplishot [OPTIONS] <file>...
-    parser = argparse.ArgumentParser(
-            prog='amplishot',
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-            description=textwrap.dedent("""\
-            %(prog)s is a pipeline for reconstructing full length 16S sequences
-            from specially prepared 'amplishot' libraries.
-
-            There are two ways to run amplishot:
-            1. First is to perform each step individually using the subcommands
-            listed at the bottom of this help message.
-
-            2. The other way is as a pipline, which will take the
-            raw reads from the sequencer and give you back full-length 16S
-            sequences.  If you want to use the pipline simply leave out the
-            subcommand name and supply the options and files nessessary.  If
-            you want to perform each step manually refer to the subcommand help
-            by invoking '%(prog)s pipeline -h'
-            """)
-            )
-    subparser = parser.add_subparsers(title='Commands',
-            metavar=' ',
-            dest='subparser_name')
-
-#--------------------
-    #pipeline parser
-    # amplishot pipeline [OPTIONS] file [file...]
-    pipeline_parser = subparser.add_parser('pipeline',
-            help='Run %(prog)s from start to finish',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            parents=[common_options_parser, threads_parser]
-            )
-    pipeline_parser.add_argument('-T','--taxonomy', #required=True,
+    parser.add_argument('-T','--taxonomy_file', #required=True,
     dest='taxonomy_file', help="File\
             containing the taxonomy mapping of the reference sequences in the\
                     bowtie database")
-    pipeline_parser.add_argument('-d', '--bowtie-database', #required=True,
+
+    parser.add_argument('-d', '--mapper_database', #required=True,
     dest='mapper_database', help="the\
             path to the bowtie database, without the suffixes; just like you\
             would write when using bowtie")
-    pipeline_parser.add_argument('-o',
-            '--output-directory', dest='output_directory',
-            help='Root directoy under which all files and folders from the\
-            pipeline will be generated from')
-    #pipeline_parser.add_argument('-m', '--minscore', dest='phrap_minscore',
-    #        type=int, default=config.data.get('phrap_minscore', 300),
-    #        help='The minimum alignment score used in\
-    #        the phrap assembly')
-    pipeline_parser.add_argument('-s', '--similarity', type=float,
-            dest='otu_clustering_similarity',
-            help='The similarity'\
-                    ' required between sequences AFTER reconstruction'\
-                    ' for OTU clustering')
-    pipeline_parser.add_argument('-i', '--input', nargs=2, action='append',
+    
+    parser.add_argument('-i', '--input_raw_reads', nargs=2, action='append',
             help='paths to first and pecond pairs of reads for \'pairtig\'\
             generation.  Can be specified multiple times for many samples',
             dest='input_raw_reads')
-    pipeline_parser.add_argument('-l', '--min-length',
-            dest='minimum_pairtig_length',
+    
+    parser.add_argument('-l', '--minimum_pairtig_length',
+            dest='minimum_pairtig_length', default=350,
             help='The minimal acceptable length for\
             assembled pairs')
-    pipeline_parser.add_argument('-O', '--overlap-length',
-            dest='pair_overlap_length',
+    parser.add_argument('-L', '--minimum_reconstruction_length', default=1000,
+            help='minimum length for 16S assemblies to be included in final \
+            set')
+    
+    parser.add_argument('-M', '--mapping_similarity_cutoffs',
+            default=[0.88,0.92,0.94,0.98],
+            action=CommaStringToList,
+            help="A series of percentages (as a number between 0 and 1) that \
+            are comma separated used to indicate a binning pattern for reads")
+    
+    parser.add_argument('-O', '--pair_overlap_length',
+            dest='pair_overlap_length', type=int, default=30,
             help='the minimum length that pairs must overlap by')
-    pipeline_parser.set_defaults(func=pipeline)
+    
+    parser.add_argument('-o', '--output_directory', default='./',
+             dest='output_directory',
+            help='Root directoy under which all files and folders from the\
+            pipeline will be generated from')
+    
+    parser.add_argument('-A', '--aligner_template',
+            default=config.data.get('aligner_template', None),
+            help='File path for prealigned 16S sequences from NAST')
+    
+    parser.add_argument('-s', '--otu_clustering_similarity', type=float,
+            dest='otu_clustering_similarity', default=0.99,
+            help='The similarity'\
+                    ' required between sequences AFTER reconstruction'\
+                    ' for OTU clustering')
+    
+    parser.add_argument('-R','--taxon_coverage',nargs=2, default=[2, 1000],
+            metavar='INT',
+            help='list of two numbers. The first is the minimum coverage, the \
+            second is the number of bases that need to be covered')
+
+    parser.add_argument('-a', '--assembly_method', default='ray',
+            choices=['ray', 'phrap', 'velvet'], help='de novo assembly method \
+            used for reconstruction')
+    parser.add_argument('-b', '--assign_taxonomy_method', default='blast',
+            choices=['blast'], help='method for assigning taxonomy to \
+            full-length reconstructions')
+    parser.add_argument('-n', '--neighbours_file', help='file containing OTUs \
+            that are within X percentage, phylogenetic distance to each other')
+
+    parser.add_argument('-B', '--taxonomy_blast_db', dest='blast_db',
+            help='input file path for blast formatted database for assigning \
+            taxonomy using blast')
 
     args = parser.parse_args()
-
+    
     write_new_config = config.check_config_and_set_output(args)
 #-------------------
     # set up the logger
@@ -666,7 +662,7 @@ if __name__ == '__main__':
     if config.data['log_file'] is not None:
         logging.basicConfig(filename=config.data['log_file'])
 
-    args.func(config)
+    pipeline(config)
     if write_new_config:
         config.write_config()
 

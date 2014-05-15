@@ -178,7 +178,7 @@ def assign_taxonomy(assigner, infile, config, result_file=None,
                 str(assignment_method_choices))
     
     try:
-        params = config.data[assigner]
+        params = { 'blast_db': config.data['blast_db'] }
     except KeyError, e:
         if assigner == 'bowtie':
             params['index'] = config.data['mapper_database']

@@ -214,7 +214,7 @@ def orientate(fullLengthSeqs):
 
 
 def generate_pairtigs(config, root_dir):
-    if len(config.data['pairtig_read_files']) != len(config.data['raw_input_reads']):
+    if len(config.data['pairtig_read_files']) != len(config.data['input_raw_reads']):
         pairtig_dir = os.path.join(root_dir, 'pairtigs')
         if not os.path.exists(pairtig_dir):
             os.mkdir(pairtig_dir)

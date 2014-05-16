@@ -146,11 +146,17 @@ class AmplishotConfig(object):
         with open(outfp, 'w') as fp:
             fp.write(str(self))
 
-    def _set_path_to_absolute(self, fp):
+    def _set_path_to_absolute(self, fp, create=False):
         fp = os.path.expanduser(fp)
         fp = os.path.abspath(fp)
         if not os.path.exists(fp):
-            raise AmplishotConfigError('cannot find file: %s' % fp)
+            if create:
+                try:
+                    os.makedirs(fp)
+                except OSError:
+                    raise AmplishotConfigError('cannot make the directory %s' % fp)
+            else:
+                raise AmplishotConfigError('cannot find file: %s' % fp)
         return fp
 
     def check_config_and_set_output(self, args):
@@ -161,7 +167,8 @@ class AmplishotConfig(object):
 
         try:
             root_dir = self.data['output_directory'] =\
-                self._set_path_to_absolute(self.data['output_directory'])
+                self._set_path_to_absolute(self.data['output_directory'],
+                        create=True)
         except KeyError:
             root_dir = self.data['output_directory'] = os.getcwd()
 

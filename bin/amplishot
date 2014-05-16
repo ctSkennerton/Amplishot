@@ -548,8 +548,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=numeric_level,
             format='%(levelname)s\t%(asctime)s\t%(message)s')
 
-    if config.data['log_file'] is not None:
-        logging.basicConfig(filename=config.data['log_file'])
+    #if config.data['log_file'] is not None:
+    #    logging.basicConfig(filename=config.data['log_file'])
 
     pipeline(config)
     if write_new_config:

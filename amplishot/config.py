@@ -91,14 +91,6 @@ read_mapping_percent: 0.90 # the percent identity that individual reads have to 
 repset_output_file: full_length_sequences.repset.fa
 assign_taxonomy_method: blast
 minimum_taxon_similarity: 0.90 # sequences that fall below this cutoff will be listed as no taxonomy
-phrap:
-    minscore: 300
-    penalty: -9
-    gap_ext: -10
-    gap_init: -11
-    ace: True
-blast:
-    blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
 '''
 class AmplishotConfigError(Exception):
     def __init__(self, msg):
@@ -127,8 +119,9 @@ class AmplishotConfig(object):
         return yaml.load(data, Loader=Loader)
 
     def populate_from_config_file(self, fp):
-        self.data = self._load(fp)
-
+        conf_file_data = self._load(fp)
+        for key, value in conf_file_data.items():
+            self.data[key] = value
 
     def populate_from_commandline(self, args):
         """ take the args that were input on the command line and overwrite the

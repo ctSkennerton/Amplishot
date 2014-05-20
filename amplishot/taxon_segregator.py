@@ -556,11 +556,11 @@ class TaxonSegregator(object):
                         self.taxon_mapping[this_read_cutoff_index][read.rname].append(read)
                     except KeyError:
                         self.taxon_mapping[this_read_cutoff_index][read.rname] = [read]
-            else:
-                try:
-                    self.taxon_mapping[-1][-1].append(read)
-                except KeyError:
-                    self.taxon_mapping[-1][-1] = [read]
+            #else:
+            #    try:
+            #        self.taxon_mapping[-1][-1].append(read)
+            #    except KeyError:
+            #        self.taxon_mapping[-1][-1] = [read]
 
     def segregate2(self, root='root', minCount=1000,
             minCoverage=2, fasta=True, qual=True,

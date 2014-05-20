@@ -77,16 +77,9 @@ taxonomy_file: file.tab # path to the file containing taxonomy for the reference
 mapping_similarity_cutoffs: [0.88, 0.92, 0.94, 0.98]
 initial_mapping_similarity: 0.98 # the sequence similarity required between the reference database and the reads
 taxon_coverage: [2, 1000] # list of two numbers. The first is the minimum coverage, the second is the number of bases that need to be covered
-read_clustering_method: cdhit
-read_clustering_similarity: 0.98 # sequence similarity between two reads to be clustered together
-cdhit_max_memory: 1000 # maximum memory allowed for cdhit - does not apply to other reduction methods
-assembly_method: phrap # choose a genome assembler  
-preassemble_clustering: true
-assemble_unknowns: false # choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)
 minimum_reconstruction_length: 1000 # minimum length of sequences that we define as 'full length'
 otu_clustering_method: cdhit
-otu_clustering_similarity: 0.97 # the similarity used for clustering full-length sequences from different samples into OTUs
-normalize_otu_table: true # output a normalized OTU table as well as non-normalized
+otu_clustering_similarity: 0.99 # the similarity used for clustering full-length sequences from different samples into OTUs
 read_mapping_percent: 0.90 # the percent identity that individual reads have to map with to be considered part of the reference
 repset_output_file: full_length_sequences.repset.fa
 assign_taxonomy_method: blast

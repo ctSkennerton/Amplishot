@@ -273,56 +273,26 @@ class AssemblyWrapper(object):
         except KeyError:
             assembly_params = dict()
 
-        if self.reduce:
-            # dataset reduction - cd-hit - each partition
-            logging.info('clustering...')
-            for filepath, cutoffs in taxons.items():
-                for read_file in os.listdir(filepath):  #glob.iglob("*fa"):
-                    match = self.read_re.search(read_file)
-                    if match:
-                        infile_name = read_file
-                        outfile_name = 'cdhitout_%s.fa' % match.group(1)
-                        logging.debug("Found read file: %s\nIn directory: %s",
-                                infile_name, filepath)
-                    #for c in cutoffs:
-                        #infile_name = 'reads_%.2f.%s' % (c,
-                        #        self.assembler_extension)
-                        #outfile_name = 'cdhitout_%.2f.fa' % c
-                        
-                        cd_hit_params = dict(infile=infile_name, 
-                                outfile=outfile_name,
-                                similarity=self.config.data['read_clustering_similarity'],
-                                maxMemory=self.config.data['cdhit_max_memory'])
+        for filepath, read_types in taxons.items():
+            local_params = assembly_params.copy()
+            local_params.update(read_types)
+            local_params['-o'] = filepath
 
-                        pool_results.append(pool.apply_async(reduce_and_assemble,
-                            (filepath, assembly_params, cd_hit_params, self.constructor),
-                            dict(suppressStderr=self.suppressStderr,
-                            suppressStdout=self.suppressStdout)))
+            #single thread mode
+            #res = assemble(filepath, assembly_params, self.constructor, suppressStderr=self.suppressStderr, suppressStdout=self.suppressStdout)
+            #pool_results.append(res)
+            
+            #FIXME: There is something super weird with the multithreading
+            #mode that causes an error when reading an output file even when
+            #the file exists.  This problem does not happen in the single
+            #threaded mode.
 
-            pool.close()
-            pool.join()
-
-        else:
-            for filepath, read_types in taxons.items():
-                local_params = assembly_params.copy()
-                local_params.update(read_types)
-                local_params['-o'] = filepath
-
-                #single thread mode
-                #res = assemble(filepath, assembly_params, self.constructor, suppressStderr=self.suppressStderr, suppressStdout=self.suppressStdout)
-                #pool_results.append(res)
-                
-                #FIXME: There is something super weird with the multithreading
-                #mode that causes an error when reading an output file even when
-                #the file exists.  This problem does not happen in the single
-                #threaded mode.
-
-                pool_results.append(pool.apply_async(assemble,
-                    (filepath, local_params, self.constructor),
-                    dict(suppressStderr=self.suppressStderr,
-                    suppressStdout=self.suppressStdout)))
-            pool.close()
-            pool.join()
+            pool_results.append(pool.apply_async(assemble,
+                (filepath, local_params, self.constructor),
+                dict(suppressStderr=self.suppressStderr,
+                suppressStdout=self.suppressStdout)))
+        pool.close()
+        pool.join()
 
         full_length_counter = 1
         #for r in pool_results:

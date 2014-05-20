@@ -7,17 +7,18 @@ taxonomic resolution can be lost when using 454 pyrosequencing due
 to the smaller fragment of the 16S rRNA gene that is being analyzed.
 *Amplishot* combines amplification of the full 16S rRNA gene sequence
 with *de novo* reconstruction of full-length 16S rRNA genes from specially
-constructed "Amplishot" Illumina sequencing libraries. 
+constructed "Amplishot" Illumina sequencing libraries or from
+metagenomes. 
 ## Dependancies
 *   [Qiime](http://qiime.org) - tested only on version 1.6.0
 *	[bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) - tested with version 2.0.5
 *	[cd-hit](http://cd-hit.org) - tested with 4.5.4
-*	[pandaseq](https://github.com/neufeld/pandaseq) - test with version 2.3
 
 ### Assembly Dependancies
 You must have one of the following
 *	[phrap](http://www.phrap.org/) - tested with version 1.09518
-*   [fermi](https://github.com/lh3/fermi) - tested with version 1.1
+*   [Ray](http://denovoassembler.sourceforge.net/) - tested with version 2.3.1
+*   [velvet](https://www.ebi.ac.uk/~zerbino/velvet/)
 
 ## Installation
 You can either download the [latest source code](https://github.com/ctSkennerton/Amplishot)
@@ -50,8 +51,6 @@ to the current configuration set.
    	The value should be a single integer number (default: 1)
 *	`log_level`: Changes the verbosity of logging messages.  The options from most 
    	verbose to least are: DEBUG, INFO, WARN, ERROR, CRITICAL (default: INFO)
-*	`log_file`: Give the **full** filepath to output all logging messages.  
-   	By default logging is output to the terminal in the STDERR stream.  
 *	`output_directory`: This is the directory where all results will be outputted.  
    	By default it is the current directory, symbolized by a '.' character
 *	`input_raw_reads`: This must be a list of files raw Illumina sequencing read files
@@ -84,13 +83,6 @@ to the current configuration set.
 		aliases: [alias1, alias2]
 
 *	`minimum_pairtig_length`: Specify the minimum length that pairtigs must be.  This 
-		aliases:
-			- alias1
-			- alias2
-		
-		aliases: [alias1, alias2]
-
-*	`minimum_pairtig_length`: Specify the minimum length that pairtigs must be.  This 
 	option has no effect if the `pairtig_read_files` option is set. (default: 350)
 *	`pair_overlap_length`: The minimum number of nucleotides that two reads from a 
 	pair must overlap by to generate a pairtig. (default: 30)
@@ -108,24 +100,13 @@ to the current configuration set.
 	enough reads for assembly.  The first number must be the minimum coverage (vertical
 	read depth) for a taxon; the second number is the number of bases that must 
 	contain the minimum coverage. (default: [2, 1000])
-*	`read_clustering_method`: method of reducing excess coverage after taxonomic
-	segregation but before assembly. There is currently only one option `cdhit`
-*	`read_clustering_similarity`: sequence similarity between two reads to be clustered
-	together
-*	`cdhit_max_memory`: maximum memory allowed for cdhit - does not apply to other 
-	reduction methods. (default: 1000)
 *	`assembly_method`: *de novo* 16S reconstruction method.  The only valid
 	values are `phrap` and  `fermi`
-*	`assemble_unknowns`: choose whether to assemble reads that do not map to any 
-	reference sequence. May be *very slow* when using phrap as the assembly method.
-	Valid values are: yes, no, true, false
 *	`minimum_reconstruction_length`: minimum length of sequences that are defined 
 	as 'full length' and used in taxonomic assignment.
 *	`otu_clustering_method`: Currently the only valid value is `cdhit`
 *	`otu_clustering_similarity`: the similarity used for clustering full-length 
 	sequences from different samples into OTUs 
-*	`normalize_otu_table`: output a normalized OTU table as well as non-normalized.
-	Valid values are: yes, no, true, false
 
 ### Program related blocks
 Some of the underlying programs used in Amplishot can be controlled precisely by
@@ -227,35 +208,20 @@ This option is overridden if both the `reference_sequences_fp` and
     ---
     threads: 5
     log_level: INFO
-    log_file: null
     minimum_pairtig_length: 350 # minimum length of the overlapped pairs
     pair_overlap_length: 30 # mimimum length of the overlap
     mapper: bowtie # program used for read mapping 
     mapping_similarity_cutoffs: [0.85, 0.90, 0.95, 0.98] # the sequence similarity required between the reference database and the reads
     taxon_coverage: [2, 1000] # list of two numbers. The first is the minimum coverage, the second is the number of bases that need to be covered
-    read_clustering_method: cdhit
-    read_clustering_similarity: 0.98 # sequence similarity between two reads to be clustered together
-    cdhit_max_memory: 1000 # maximum memory allowed for cdhit - does not apply to other reduction methods
-    assembly_method: fermi # choose a genome assembler  
-    preassemble_clustering: true
-    assemble_unknowns: true # choose whether to assemble reads that had no match during mapping. (VERY SLOW WITH PHRAP)
+    assembly_method: ray # choose a genome assembler  
     minimum_reconstruction_length: 1000 # minimum length of sequences that we define as 'full length'
     otu_clustering_method: cdhit
     otu_clustering_similarity: 0.97 # the similarity used for clustering full-length sequences from different samples into OTUs
-    normalize_otu_table: true # output a normalized OTU table as well as non-normalized
     read_mapping_percent: 0.90 # the percent identity that individual reads have to map with to be considered part of the reference
     assign_taxonomy_method: blast
     minimum_taxon_similarity: 0.90 # sequences that fall below this cutoff will be listed as no taxonomy
-    phrap:
-        minscore: 300
-        penalty: -9
-        gap_ext: -10
-        gap_init: -11
-        ace: True
-    fermi:
-        kmer_length: 200
-    blast:
-        blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
+    blast_db: '/srv/whitlam/bio/db/gg/from_www.secongenome.com/2012_10/gg_12_10_otus/rep_set/99_otus.fasta'
+
 ### Tips for writing config files
 Writing out the full file path names in the configuration file can be a
 real pain.  However you can reduce the burden on yourself by taking

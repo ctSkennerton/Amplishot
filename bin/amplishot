@@ -451,7 +451,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser( formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-
+    parser.add_argument('--version', action='version', version='%(prog)s '+__version__)
     parser.add_argument('-c', '--config-file', dest='config',
             #default=os.path.join(os.path.expanduser('~'),'.amplishot_config.yml'),
             help='specify a custom location to the amplishot configuration\

@@ -357,7 +357,8 @@ def pipeline(config):
         # pick OTUs and representative set
         out_otu_map = amplishot.otu_table.pick_otus(full_length_seqs.name,
                 outputFileName=os.path.join(root_dir, 'full_length_otus.txt'),
-                similarity=config.data['otu_clustering_similarity'])
+                similarity=config.data['otu_clustering_similarity'],
+                otuPickingMethod=config.data['otu_clustering_method'])
 
         rep_set = amplishot.otu_table.pick_rep_set(full_length_seqs.name, out_otu_map,
                 outputFilePath=os.path.join(root_dir,
@@ -515,6 +516,10 @@ if __name__ == '__main__':
             help='The similarity'\
                     ' required between sequences AFTER reconstruction'\
                     ' for OTU clustering')
+
+    parser.add_argument('-p', '--otu_picking_method', choices=['cdhit',
+        'uclust'], default='cdhit', help='The program used to cluster\ 
+            sequences into OTUs')
     
     parser.add_argument('-R','--taxon_coverage',nargs=2, default=[2, 1000],
             metavar='INT',

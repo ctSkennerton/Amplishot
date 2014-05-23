@@ -184,15 +184,11 @@ class OTUTableGenerator(object):
 def pick_otus(inputSeqsFilepath, otuPickingMethod='cdhit', similarity=0.98,
         maxCdhitMemory=1000, outputFileName='full_length_otus.txt'):
     """ Call out to qiime to pick the OTUs
-    Qiime has a number of OTU picking methods, which I intend to support at
-    some point.  However at the moment I think that I'll be opinionated and say
-    that you have to use CD-HIT
     """
     # code copied from pick_otus.py in the qiime scripts dicectory
     otu_picker_constructor =\
      otu_picking_method_constructors[otuPickingMethod]
-    params = {'Similarity': similarity,
-            '-M': maxCdhitMemory}
+    params = {'Similarity': similarity}
     otu_picker = otu_picker_constructor(params)
 
     otu_picker(inputSeqsFilepath, result_path=outputFileName)

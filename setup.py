@@ -8,7 +8,7 @@ setup(
     packages=['amplishot', 'amplishot.test',
         'amplishot.parse', 'amplishot.app'],
     package_data={'amplishot': ['data/logWordPrior.txt']},
-    scripts=['bin/amplishot', 'bin/link16SToContigs.py'],
+    scripts=['bin/amplishot'],
     url='http://pypi.python.org/pypi/Amplishot/',
     license='LICENSE.txt',
     description='Amplishot',

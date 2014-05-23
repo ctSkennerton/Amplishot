@@ -86,7 +86,7 @@ assign_taxonomy_method: blast
 minimum_taxon_similarity: 0.90 # sequences that fall below this cutoff will be listed as no taxonomy
 '''
 class AmplishotConfigError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=''):
         self.msg = msg
     def __str__(self):
         return repr(self.msg)

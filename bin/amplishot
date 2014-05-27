@@ -518,8 +518,8 @@ if __name__ == '__main__':
                     ' for OTU clustering')
 
     parser.add_argument('-p', '--otu_picking_method', choices=['cdhit',
-        'uclust'], default='cdhit', help='The program used to cluster\ 
-            sequences into OTUs')
+        'uclust'], default='cdhit', help='The program used to cluster '\
+            'sequences into OTUs')
     
     parser.add_argument('-R','--taxon_coverage',nargs=2, default=[2, 1000],
             metavar='INT',

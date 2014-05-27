@@ -74,19 +74,49 @@ def fermi_constructor(workingdir, params=None, infile='reads.fa',
 
 def velvet_constructor(workingdir, params=None, infile='reads.fa',
         suppressStdout=True, suppressStderr=True):
-    kmer_length = params['kmer_length']
-    del params['kmer_length']
-    name = os.path.splitext(infile)[0]
-    workingdir = os.path.join(workingdir,name)
-    vh = Velveth(kmer_length,  SuppressStdout=suppressStdout,
-            SuppressStderr=suppressStderr, WorkingDir=workingdir,
-            HALT_EXEC=False)
-    vh.add_category(os.path.join('..',infile))
-    vh()
-    vg = Velvetg(params=params, SuppressStdout=suppressStdout,
-            SuppressStderr=suppressStderr, WorkingDir=workingdir,
-            HALT_EXEC=False)
-    return vg()
+    velveth = ['velveth']
+    velvetg = ['velvetg']
+
+    if '-o' not in params:
+        velveth.append(infile[:-3])
+        velvetg.append(infile[:-3])
+    else:
+        velveth.append(params['-o'])
+        velvetg.append(params['-o'])
+
+
+    if 'kmer_size' not in params:
+        velveth.append('31')
+    else:
+        velveth.append(params['kmer_size'])
+
+    if 'r1' in params and 'r2' in params:
+        velveth.extend(['-fastq', '-shortPaired', '-separate',
+            os.path.join(workingdir,params['r1']), os.path.join(workingdir,
+                params['r2'])])
+    elif 'r12' in params:
+        velveth.extend(['-fastq', '-shortPaired', '-interveaved',
+            os.path.join(workingdir,params['r12'])])
+    
+    if 's' in params:
+        velveth.extend(['-short', os.path.join(workingdir,params['s'])])
+
+
+    velvetg.extend(['-exp_cov', 'auto', '-ins_length', '400'])
+    with open(os.devnull, 'w') as dn:
+        retcode = subprocess.call(' '.join(velveth), stdout=dn, stderr=dn, shell=True)
+        if retcode != 0:
+            raise RuntimeError("Velveth failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(cmd)))
+
+        retcode = subprocess.call(' '.join(velvetg), stdout=dn, stderr=dn, shell=True)
+        if retcode == 0:
+            ret = {}
+            ret['contigs'] = os.path.join(velvetg[1],"contigs.fa")
+            return ret
+        else:
+            raise RuntimeError("Velvetg failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(cmd)))
+
+
 
 def spades_constructor(workingdir, params=None,
         suppressStdout=True, suppressStderr=True):
@@ -150,44 +180,6 @@ def ray_constructor(workingdir, params=None,
     #logging.debug(str(r))
     #return r()
 
-def cd_hit_reduce(workingdir, infile='in.fa', outfile='cdhitout.fa', similarity=0.98, maxMemory=1000):
-    cdhit = CD_HIT_EST(WorkingDir=workingdir)
-    cdhit.Parameters['-i'].on(infile)
-    cdhit.Parameters['-o'].on(outfile)
-    cdhit.Parameters['-c'].on(similarity)
-    cdhit.Parameters['-M'].on(maxMemory)
-    logging.debug(cdhit.BaseCommand)
-    cdhit()
-
-
-def process_cd_hit_results(directory, cdhitout='cdhitout.fa', cdhitin='in.fa'):
-    clustered_qual = open(os.path.join(directory,cdhitout+'.qual'), 'w')
-    clustered_reads = set()
-    cd_hit_fasta = open(os.path.join(directory,cdhitout))
-    fxparser = amplishot.parse.fastx.FastxReader(cd_hit_fasta)
-    for name, seq, qual in fxparser.parse():
-        clustered_reads.add(name)
-
-    cd_hit_fasta.close()
-    inqual = open(os.path.join(directory,cdhitin+'.qual'))
-    qualparser = amplishot.parse.fastx.QualityReader(inqual)
-    for name, qual in qualparser.parse():
-        if name in clustered_reads:
-            clustered_qual.write('>%s\n%s\n' % (name, qual))
-    inqual.close()
-
-
-def reduce_and_assemble(taxon, assembler_params, cd_hit_params,
-        assembler_constructor,
-        suppressStderr=True, suppressStdout=True):
-    cd_hit_reduce(taxon, **cd_hit_params)
-    process_cd_hit_results(taxon, cdhitin=cd_hit_params['infile'],
-            cdhitout=cd_hit_params['outfile'])
-
-    return assemble(taxon, assembler_params, assembler_constructor,
-            infile=cd_hit_params['outfile'],
-            suppressStderr=suppressStderr,
-                suppressStdout=suppressStdout)
 
 def assemble(filePrefix, assembler_params,
         assembler_constructor,

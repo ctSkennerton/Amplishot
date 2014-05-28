@@ -161,6 +161,24 @@ class AmplishotConfig(object):
         if not os.path.exists(root_dir):
             os.makedirs(root_dir)
 
+        try:
+            self.data['nieghbours_file'] =\
+                self._set_path_to_absolute(self.data['nieghbours_file'])
+            self.data['taxonomy_file'] =\
+                self._set_path_to_absolute(self.data['taxonomy_file'])
+            self.data['mapper_database'] =\
+                self._set_path_to_absolute(self.data['mapper_database'])
+            self.data['aligner_template'] =\
+                self._set_path_to_absolute(self.data['aligner_template'])
+            self.data['blast_db'] =\
+                self._set_path_to_absolute(self.data['blast_db'])
+        except KeyError:
+            raise AmplishotConfigError('one or more compulsory files have not \
+                    been given on the command line or in the config file. \
+                    Please check that you have defined the nieghbours_file, \
+                    taxonomy_file, mapper_database, aligner_template and \
+                    blast_db and that they point to valid files')
+
         for i in range(len(self.data['input_raw_reads'])):
             f = self.data['input_raw_reads'][i]
             if isinstance(f, list):

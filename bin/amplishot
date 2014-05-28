@@ -239,8 +239,14 @@ def generate_pairtigs(config, root_dir):
 
 def pair_reads(config, root_dir):
     # generate fragment consensus sequences - pandaseq
-    if 'skip_pairtigs' not in config.data:
-        generate_pairtigs(config, root_dir)
+    if 'skip_pairtigs' in config.data:
+        return
+
+    for i in config.data['input_raw_reads']:
+        if not isinstance(i, list):
+            return
+
+    generate_pairtigs(config, root_dir)
 
 
 def fixup_aliases(config):

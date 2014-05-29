@@ -552,15 +552,9 @@ class TaxonSegregator(object):
                         break
 
                     try:
-                        #print this_read_cutoff_index, read.rname
                         self.taxon_mapping[this_read_cutoff_index][read.rname].append(read)
                     except KeyError:
                         self.taxon_mapping[this_read_cutoff_index][read.rname] = [read]
-            #else:
-            #    try:
-            #        self.taxon_mapping[-1][-1].append(read)
-            #    except KeyError:
-            #        self.taxon_mapping[-1][-1] = [read]
 
     def segregate2(self, root='root', minCount=1000,
             minCoverage=2, fasta=True, qual=True,
@@ -571,8 +565,8 @@ class TaxonSegregator(object):
            This function will make a directory containing a number of files
            each containing reads associated with a particular cluster of OTUs.
            It will overwrite any files already in the directory structure.
-           Returns two lists of tuples that contain taxons with suitable
-           coverage and those that do not.
+           Returns a list of tuples that contain taxons with suitable
+           coverage.
 
            root: The root directory name.  By default creates a directory called
                  'root' in the current directory
@@ -593,12 +587,8 @@ class TaxonSegregator(object):
         
         sorted_hits = self.sortHits()
         otu_clusters = self.clusterHits(sorted_hits)
-        incomplete_taxons = defaultdict(list)
         complete_taxons = defaultdict(list)
 
-            #raise RuntimeError('the neighbours file has not been parsed')
-        #for cutoff_index, cutoff in enumerate(self.cutoffs):
-        #for cluster in otu_clusters[cutoff_index]:
         for cluster in otu_clusters:
             try:
                 taxon_ranks = self.ref_taxon_mapping[cluster.ref]
@@ -620,134 +610,6 @@ class TaxonSegregator(object):
         self.done_segregation = True
         return complete_taxons
 
-    def parse_sam(self, sam):
-        """iterate through the records in a samfile and place them into
-           one of the taxonomies based on the mapping
-
-           sam: an opened samfile generated with pysam
-        """
-        if self.done_segregation:
-            raise RuntimeError, 'Segregation has already taken place.  Please\
-            parse all samfiles at one and then call segregate at the end'
-        samf = amplishot.parse.sam.SamFileReader(sam, parseHeader=False)
-        for read in samf.parse():
-            if not read.is_unmapped():
-                percent_id = read.percent_identity()
-                this_read_cutoff_index = 0
-                for i in range(len(self.cutoffs)):
-                    if percent_id >= self.cutoffs[i]:
-                        this_read_cutoff_index = i
-                    else:
-                        break
-
-                    t = self.ref_taxon_mapping[read.rname]
-                    try:
-                        self.taxon_mapping[t][this_read_cutoff_index].append(read)
-                    except IndexError:
-                        tmp_array = [[] * n for n in range(len(self.cutoffs))]
-                        self.taxon_mapping[t] = tmp_array
-                        self.taxon_mapping[t][this_read_cutoff_index].append(read)
-            else:
-                try:
-                    self.taxon_mapping[tuple()][0].append(read)
-                except KeyError:
-                    self.taxon_mapping[tuple()] = [[read]]
-
-
-    def segregate(self, root='root', mergeUpLevel=5, minCount=1000,
-            minCoverage=2, fasta=True, qual=True,
-            fastq=False, sam=False, prefix='reads'):
-        """Partition all reads into separate files
-           Ideally this should be called after all sam files have been parsed
-           This function will make a directory structure equal to the taxonomy
-           strings for each of the reference sequences.  It will overwrite any
-           files already in the directory structure.
-           Returns two lists of tuples that contain taxons with suitable
-           coverage and those that do not
-
-           root: The root directory name.  By default creates a directory called 
-                 'root' in the current directory
-           mergeUpLevel: The taxonomic level at which to stop merging up if
-                there is not enough coverage.  By default this is level 5, which in
-                greengenes is the family level
-           minCount: the minimum number of positions that must have coverage
-           minCoverage: the minimum coverage allowed for the covered positions
-           fasta: output a fasta file containing segregated reads
-           qual: output a fasta.qual file containing integer quality values for
-                segregated reads
-           fastq: output a fastq file containing seqregated reads
-           sam: output segregated reads in sam format
-           prefix: the name for the output files without extension (don't put
-                directories here, they are created automatically)
-        """
-        complete_taxons = defaultdict(list)
-        incomplete_taxons = defaultdict(list)
-        sorted_taxons = self.taxon_mapping.keys()
-        sorted_taxons = sorted(sorted_taxons, reverse=True, cmp=lambda x,y: cmp(len(x), len(y)))
-        for taxon_ranks in sorted_taxons:
-            for cutoff_index in range(len(self.taxon_mapping[taxon_ranks])):
-                if not self._check_taxon_coverage(self.taxon_mapping[taxon_ranks][cutoff_index],\
-                        minCount, minCoverage):
-                    if len(taxon_ranks) > mergeUpLevel:
-                        new_taxon = []
-                        for i in range(len(taxon_ranks) - 1):
-                            new_taxon.append(taxon_ranks[i])
-                        
-                        t = tuple(new_taxon)
-                        try:
-                            self.taxon_mapping[t][cutoff_index].extend(self.taxon_mapping[taxon_ranks][cutoff_index])
-                        except (IndexError, KeyError):
-                            # no taxon above this level therefore no point in
-                            # deleting this taxon
-                            pass
-                        else:
-                            del self.taxon_mapping[taxon_ranks][cutoff_index][:]
-                    else:
-                        incomplete_taxons[taxon_ranks].append(self.cutoffs[cutoff_index])
-                else:
-                    complete_taxons[taxon_ranks].append(self.cutoffs[cutoff_index])
-                    reads = self.taxon_mapping[taxon_ranks][cutoff_index]
-
-                    dir_path = os.path.join(root, *taxon_ranks)
-                    if not os.path.exists(dir_path):
-                        os.makedirs(dir_path)
-
-                    fafp = None
-                    qualfp = None
-                    fqfp = None
-                    samfp = None
-                    try:
-                        if fasta:
-                            fafp = open(os.path.join(dir_path,'%s_%.2f.fasta' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
-                        if qual:
-                            qualfp = open(os.path.join(dir_path,'%s_%.2f.fasta.qual' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
-                        if fastq:
-                            fqfp = open(os.path.join(dir_path,'%s_%.2f.fastq' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
-                        if sam:
-                            samfp = open(os.path.join(dir_path, '%s_%.2f.sam' %
-                                (prefix, self.cutoffs[cutoff_index])), 'w')
-
-                        for aligned_read in reads:
-                            self._sam_to_fastx(aligned_read, fasta=fafp,
-                                    qual=qualfp, fastq=fqfp)
-                            if sam:
-                                samfp.write('%s\n' % str(aligned_read))
-
-                    finally:
-                        if fafp is not None: 
-                            fafp.close()
-                        if qualfp is not None:
-                            qualfp.close()
-                        if fqfp is not None:
-                            fqfp.close()
-                        if samfp is not None:
-                            samfp.close()
-
-        self.done_segregation = True
-        return complete_taxons, incomplete_taxons
 ###############################################################################
 ###############################################################################
 ###############################################################################

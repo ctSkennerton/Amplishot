@@ -303,7 +303,7 @@ def segregate_and_assemble(config, indata, root_dir):
         output_fasta = True
         output_pairs = False
         sep12 = False
-        if config.data['assembly_method'] == 'spades' or config.data['assembly_method'] == 'ray':
+        if config.data['assembly_method'] != 'phrap':
             output_fastq = True
             output_qual = False
             output_fasta = False

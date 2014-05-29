@@ -41,6 +41,7 @@ from collections import defaultdict
 import amplishot.parse.sam
 import amplishot.parse.fastx
 from amplishot.util import reverse_complement
+import pysam
 ###############################################################################
 ###############################################################################
 ###############################################################################

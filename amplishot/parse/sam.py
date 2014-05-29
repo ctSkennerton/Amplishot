@@ -40,8 +40,61 @@ class SamReadError(Exception):
 class AlignmentTagError(SamReadError):
     pass
 
+class MiniSamRead(object):
+    ''' Stores some of the info from the sam file alignments without all the
+        crud
+    '''
+    def __init__(self, _name, _seq, _qual, _ref, _flag, _pos, _rnext, _pnext):
+        self.qname = _name
+        self.flag = _flag
+        self.rname = _ref
+        self.pos = _pos
+        self.rnext = _rnext
+        self.pnext = _pnext
+        self.seq = _seq
+        self.qlen = len(self.seq)
+        self.qual = _qual
+        self.rlen = self.qlen
+
+    def has_multiple_segments(self):
+        return self.flag & 0x1 == 0x1
+
+    def is_properly_aligned(self):
+        return self.flag & 0x2 == 0x2
+
+    def is_unmapped(self):
+        return self.flag & 0x4 == 0x4
+
+    def is_next_segment_unmapped(self):
+        return self.flag & 0x8 == 0x8
+
+    def is_reversed(self):
+        return self.flag & 0x10 == 0x10
+
+    def is_next_segment_reversed(self):
+        return self.flag & 0x20 == 0x20
+
+    def is_first_segment(self):
+        return self.flag & 0x40 == 0x40
+
+    def is_last_segment(self):
+        return self.flag & 0x80 == 0x80
+
+    def is_secondary_alignment(self):
+        return self.flag & 0x100 == 0x100
+
+    def is_qc_fail(self):
+        return self.flag & 0x200 == 0x200
+
+    def is_duplicate(self):
+        return self.flag & 0x400 == 0x400
+
+    def is_suplementary_alignment(self):
+        return self.flag & 0x800 == 0x800
+
+
 class SamRead(object):
-    
+
     def __init__(self, fields, parseTags=True):
         super(SamRead, self).__init__()
         if isinstance(fields, str):
@@ -117,7 +170,7 @@ class SamRead(object):
         else:
             string += self.tags
         return string
-    
+
     def has_multiple_segments(self):
         return self.flag & 0x1 == 0x1
 
@@ -174,7 +227,7 @@ class SamFileReader(object):
         self.parse_tags = parseTags
         self.parse_header = parseHeader
         self.references = {}
-        
+
         try:
             if parseString:
                 self.fp = f.splitlines()

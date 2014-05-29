@@ -45,6 +45,7 @@ from amplishot.util import reverse_complement
 ###############################################################################
 ###############################################################################
 ###############################################################################
+
 class Cluster (object):
     """Holding class for information about a cluster of reads
     """
@@ -90,7 +91,7 @@ class TaxonSegregator(object):
     un_re = re.compile('[\s\[\]\{\}]')
 
     def __init__(self, taxonfile, cutoffs=[0.8,0.87,0.92,0.98],
-            neighboursfile='/srv/db/gg/2013_05/gg_13_5_otus/dist/dist_99_otus.tsv'):
+            neighboursfile=None):
         """
            taxonfile: path to a file containing the mapping between reference
                       identifiers and the taxonomy string
@@ -107,7 +108,7 @@ class TaxonSegregator(object):
 
         cutoffs.sort()
         self.cutoffs = cutoffs
-        
+
         for i in self.cutoffs:
             self.taxon_mapping[i] = {}
         self.taxon_mapping[-1] = {}
@@ -134,7 +135,7 @@ class TaxonSegregator(object):
         return self.un_re.sub('', tax)
 
     def _parse_greengenes_sparate(self, taxonfp):
-        """greengenes taxonomy file where each taxonomic division is space 
+        """greengenes taxonomy file where each taxonomic division is space
            separated
            12345    k__x; p__x; c__x; o__x; f__x; g__x; s__x
         """
@@ -156,7 +157,7 @@ class TaxonSegregator(object):
             line = line.rstrip()
             (refid, taxon_string) = line.split('\t')
             taxon_divisions = taxon_string.split(';')
-            
+
             names = []
             for rank in taxon_divisions:
                 names.append(self._remove_unusual_chars(rank[3:]))
@@ -175,14 +176,14 @@ class TaxonSegregator(object):
             self._generate_mapping(refid, taxon_divisions)
 
     def _generate_mapping(self, refid, taxon_divisions):
-        """take the input from one of the parsers and generate a mapping 
+        """take the input from one of the parsers and generate a mapping
            of tuple of taxon divisions to a reference id a the opposite
            reference id to tuple
         """
         taxon_divisions = filter(None, taxon_divisions)
         t = tuple(taxon_divisions)
         #self.taxon_mapping[t] = []
-        self.ref_taxon_mapping[refid] = t        
+        self.ref_taxon_mapping[refid] = t
 
     def _parse_taxon_file(self, taxonfp):
         """firse check the file format then call the correct file parser
@@ -202,7 +203,7 @@ class TaxonSegregator(object):
         """calculate the per base coverage for this taxon
            If a taxon does not contain sufficient coverage across the length of
            the reference sequences then it should be merged into a higher taxonomy
-           Since the reference sequences should be of approximate length, there 
+           Since the reference sequences should be of approximate length, there
            should not be too much problem when dealing with multiple references
            from the same taxon.  However it is likely that this coverage information
            will be a little bit 'fuzzy' since there is some variation
@@ -213,7 +214,7 @@ class TaxonSegregator(object):
         """
         #assume that the sequences are not greater than 1600bp
         coverage = [0]*5000
-        
+
         for read in taxon:
             for i in range(read.pos, read.pos + read.qlen):
                 coverage[i] += 1
@@ -224,7 +225,7 @@ class TaxonSegregator(object):
                 count += 1
 
         return count >= minCount
-    
+
     def _sam_to_fastx2(self, cluster, prefix, fasta=True, qual=True, fastq=False,
             pairs=False, sep12=False):
         """Take a pysam AlignedRead and convert it into a fasta, qual or fastq
@@ -402,7 +403,7 @@ class TaxonSegregator(object):
                     quality = amplishot.parse.fastx.decode_quality(quality)
                     quality = ' '.join(str(x) for x in quality)
                     qfps.write('>%s\n%s\n' %(name, quality))
-        
+
         if fp1:
             fp1.close()
         if fp2:
@@ -500,7 +501,6 @@ class TaxonSegregator(object):
         # clusters reference sequences within sequence identity threshold
         # dict of cluster refID to cluster objects
         ggClusters = []
-        #ggClusters = [[] * n for n in range(len(self.cutoffs))]
         for n in range(len(self.cutoffs)):
             processedIds = set()
             for i in xrange(0, len(sortedHits[n])):
@@ -522,12 +522,40 @@ class TaxonSegregator(object):
                         if ggIdJ in self.neighbours[ggIdI]:
                             clusteredReads.extend(self.taxon_mapping[self.cutoffs[n]][ggIdJ])
                             processedIds.add(ggIdJ)
-                            
+
                 first, second, single = self.separateReadsIntoConsistentPairs(clusteredReads)
                 clust = Cluster(ggIdI, self.cutoffs[n], first, second, single)
                 ggClusters.append(clust)
 
         return ggClusters
+
+    def parse_sam3(self, sam):
+        ''' pysam version for using bam files
+        '''
+        track = pysam.Samfile(sam, "rb")
+            for aln in track.fetch( until_eof = True ):
+                perc = float(self.qlen - self.tags['NM']) / float(self.qlen)
+                this_read_cutoff_index = 0
+                for i in self.cutoffs:
+                    if perc >= i:
+                        this_read_cutoff_index = i
+                    else:
+                        break
+
+                msr = amplishot.parse.sam.MiniSamRead(aln.qname,
+                        aln.seq,
+                        aln.qual,
+                        track.getrname(aln.tid),
+                        aln.flag,
+                        aln.pos,
+                        track.getrname(aln.rnext),
+                        aln.pnext)
+
+                try:
+                    self.taxon_mapping[this_read_cutoff_index][msr.rname].append(msr)
+                except KeyError:
+                    self.taxon_mapping[this_read_cutoff_index][msr.rname] = [msr]
+
 
     def parse_sam2(self, sam):
         """iterate through the records in a samfile and place them into
@@ -584,7 +612,7 @@ class TaxonSegregator(object):
         """
         if not self.neighbours:
             self.getNeighbours()
-        
+
         sorted_hits = self.sortHits()
         otu_clusters = self.clusterHits(sorted_hits)
         complete_taxons = defaultdict(list)
@@ -620,14 +648,14 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     #parser.add_argument('positional_arg', help="Required")
-    parser.add_argument('taxonfile', 
+    parser.add_argument('taxonfile',
                         help="Path to file containing the taxonomy of references")
-    parser.add_argument('samfile', nargs='+', 
+    parser.add_argument('samfile', nargs='+',
                         help="path to either sam or bam files for segregation")
     #parser.add_argument('-X', '--optional_X', action="store_true", default=False, help="flag")
-    
+
     # parse the arguments
-    args = parser.parse_args()        
+    args = parser.parse_args()
 
     t = TaxonSegregator(args.taxonfile)
 

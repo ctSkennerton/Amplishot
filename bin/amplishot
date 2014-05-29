@@ -34,13 +34,9 @@ __status__ = "Development"
 import logging
 import argparse
 import sys
-import tempfile
 import os
-import shutil
 import subprocess
-import textwrap
 import gzip
-import multiprocessing
 from collections import defaultdict
 import amplishot.parse.fastx
 from amplishot import taxon_segregator, otu_table, assign_taxonomy, assemble,\
@@ -49,14 +45,13 @@ from amplishot.app import bowtie
 from amplishot.config import AmplishotConfig, AmplishotConfigError
 from amplishot.app.cd_hit import CD_HIT_EST
 from amplishot.util import reverse_complement
-from cogent.app.util import FilePath
 from qiime.align_seqs import alignment_module_names,alignment_method_constructors,\
     pairwise_alignment_methods, CogentAligner, compute_min_alignment_length
 from qiime.identify_chimeric_seqs import chimeraSlayer_identify_chimeras
 ###############################################################################
 
 def align_seqs(config, input_fasta_fp):
-    
+
     try:
         template_alignment = config.data['aligner_template']
         if template_alignment is None:
@@ -74,16 +69,16 @@ def align_seqs(config, input_fasta_fp):
             'repset_aligned')
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    
+
     # compute the minimum alignment length if a negative value was
     # provided (the default)
     min_length = config.data['minimum_reconstruction_length']
 
-    
+
     result_path = os.path.join(output_dir, "repset_aligned.fasta")
     log_path = os.path.join(output_dir, "repset_aligned_log.txt")
     failure_path = os.path.join(output_dir, "repset_failures.fasta")
- 
+
     # try/except was causing problems here, so replacing with
     # an explicit check
     # define the aligner params
@@ -108,7 +103,7 @@ def check_chimeras(config, input_filepath):
     #output_fp = os.path.join(config.data['output_directory'],
     #        'repset_aligned', 'chimeras.txt')
 
-    return chimeraSlayer_identify_chimeras(input_filepath, 
+    return chimeraSlayer_identify_chimeras(input_filepath,
                                  output_fp=None,
                                  db_NAST_fp=config.data['aligner_template'],
                                  min_div_ratio=None,
@@ -116,17 +111,24 @@ def check_chimeras(config, input_filepath):
 
 
 
-def map_to_reference(params=None, stderr=None,
-        stdout=None):
-    """Take overlapped reads from pandaseq and map them to reference sequences
+def map_to_reference(params, sample_mapping_file):
+    """Take overlapped reads and map them to reference sequences
        returns path to output file containing sam formated alignments
-       inreads: path to file containing overlapped reads from pandaseq
-       bowtiedb: path to fileprefix of the bowtie database
     """
-    b = amplishot.app.bowtie.Bowtie2(params=params, SuppressStderr=True,
-            SuppressStdout=True)
-    logging.debug(str(b))
-    return b(stderr=stderr, stdout=stdout)
+    mapper_cmd = ['bowtie2']
+    for k,v in params.items():
+        mapper_cmd.extend([k,v])
+
+    samtools_cmd = ['samtools view -SubF 0x904 - | samtools sort -']
+    samtools_cmd.append(sample_mapping_file)
+    samtools_cmd.extend(['&& samtools index', sample_mapping_file + '.bam'])
+
+    final_cmd = ' '.join(mapper_cmd) + ' | ' + ' '.join(samtools_cmd)
+    logging.debug(final_cmd)
+
+    retcode = subprocess.call(final_cmd, shell=True)
+    if retcode != 0:
+        raise RuntimeError("failed to create bam files")
 
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):
@@ -136,10 +138,6 @@ def taxon_partition(samfile, taxonomyFile, rootdir='root'):
     taxseg = amplishot.taxon_segregator.TaxonSegregator(taxonomyFile)
     taxseg.parse_sam(samfile)
     return taxseg.segregate(root=rootdir)
-
-
-def demultiplex(args):
-    pass
 
 
 def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30,
@@ -179,14 +177,6 @@ def overlap(forward, reverse, pairtig_dir, minPairtigLen=350, minOverlap=30,
     return pear_basename + '.assembled.fastq'
 
 
-def filter_sam(args):
-    taxseg = amplishot.taxon_segregator.TaxonSegregator(args.taxonomy)
-    for samfile in args.sam:
-        taxseg.parse_sam(samfile, args.percentid)
-    good_taxons, bad_taxons = taxseg.segregate(root=args.outdir,
-            minCount=args.taxon_width,
-            minCoverage=args.taxon_depth)
-
 def make_aliases(config):
     indata = []
     config.data['aliases'] = []
@@ -211,7 +201,7 @@ def orientate(fullLengthSeqs):
     for name in fullLengthSeqs.keys():
         if cs.isSeqReversed(fullLengthSeqs[name]):
             fullLengthSeqs[name] = reverse_complement(fullLengthSeqs[name])
-    
+
     return fullLengthSeqs
 
 
@@ -262,7 +252,7 @@ def fixup_aliases(config):
             indata = zip(config.data['input_raw_reads'], config.data['aliases'])
     else:
         indata = make_aliases(config)
-        
+
     return indata
 
 
@@ -276,10 +266,9 @@ def segregate_and_assemble(config, indata, root_dir):
     wrapper = assemble.AssemblyWrapper(config.data['assembly_method'], config)
     for readfile, samplename in indata:
         logging.info('processing %s...', readfile)
-        sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping.sam')
+        sample_mapping_file = os.path.join(root_dir, samplename + '.initial_mapping')
         bowtie_params = {
             '-x': config.data['mapper_database'],
-            '-S': sample_mapping_file,
             '-p': config.data['threads'],
             #'-u': 10000,
             }
@@ -290,13 +279,12 @@ def segregate_and_assemble(config, indata, root_dir):
         else:
             bowtie_params['-U'] = readfile
 
-        bowtie_results = map_to_reference( params=bowtie_params)
+        map_to_reference(bowtie_params, sample_mapping_file)
 
         # partition dataset based on mapped reads
         logging.info('partitioning...')
         taxon_root = os.path.join(root_dir, samplename, 'root')
-        taxseg.parse_sam2(open(sample_mapping_file))
-        bowtie_results.cleanUp()
+        taxseg.parse_sam3(sample_mapping_file + '.bam')
 
         output_fastq = False
         output_qual = True
@@ -370,7 +358,7 @@ def pipeline(config):
                 outputFilePath=os.path.join(root_dir,
                     config.data.get('repset_output_file',
                         'full_length_sequences.repset.fa')))
-        
+
         # align the repset and call chimeras
         chimera_ids = set()
         try:
@@ -396,7 +384,7 @@ def pipeline(config):
         with open(rep_set, 'w') as fp:
             for name, seq in rep_set_seqs.items():
                 fp.write('>%s\n%s\n' % (name, seq))
-                
+
         logging.info('There are %i OTUs, assigning taxonomy...', len(rep_set_seqs))
 
         #assign taxonomy
@@ -405,7 +393,7 @@ def pipeline(config):
 
         observation_metadata = defaultdict(dict)
         score_field_name = 'confidence'
-        
+
         if config.data['assign_taxonomy_method'] == 'blast':
             score_field_name = 'evalue'
         elif config.data['assign_taxonomy_method'] == 'bowtie':
@@ -484,12 +472,12 @@ if __name__ == '__main__':
     dest='mapper_database', help="the\
             path to the bowtie database, without the suffixes; just like you\
             would write when using bowtie")
-    
+
     parser.add_argument('-i', '--input_raw_reads', nargs=2, action='append',
             help='paths to first and pecond pairs of reads for \'pairtig\'\
             generation.  Can be specified multiple times for many samples',
             dest='input_raw_reads')
-    
+
     parser.add_argument('-l', '--minimum_pairtig_length',
             dest='minimum_pairtig_length', default=350,
             help='The minimal acceptable length for\
@@ -497,26 +485,26 @@ if __name__ == '__main__':
     parser.add_argument('-L', '--minimum_reconstruction_length', default=1000,
             help='minimum length for 16S assemblies to be included in final \
             set')
-    
+
     parser.add_argument('-M', '--mapping_similarity_cutoffs',
             default=[0.88,0.92,0.94,0.98],
             action=CommaStringToList,
             help="A series of percentages (as a number between 0 and 1) that \
             are comma separated used to indicate a binning pattern for reads")
-    
+
     parser.add_argument('-O', '--pair_overlap_length',
             dest='pair_overlap_length', type=int, default=30,
             help='the minimum length that pairs must overlap by')
-    
+
     parser.add_argument('-o', '--output_directory', default='./',
              dest='output_directory',
             help='Root directoy under which all files and folders from the\
             pipeline will be generated from')
-    
+
     parser.add_argument('-A', '--aligner_template',
             default=config.data.get('aligner_template', None),
             help='File path for prealigned 16S sequences from NAST')
-    
+
     parser.add_argument('-s', '--otu_clustering_similarity', type=float,
             dest='otu_clustering_similarity', default=0.99,
             help='The similarity'\
@@ -526,7 +514,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--otu_picking_method', choices=['cdhit',
         'uclust'], default='cdhit', help='The program used to cluster '\
             'sequences into OTUs')
-    
+
     parser.add_argument('-R','--taxon_coverage',nargs=2, default=[2, 1000],
             metavar='INT',
             help='list of two numbers. The first is the minimum coverage, the \
@@ -546,26 +534,28 @@ if __name__ == '__main__':
             taxonomy using blast')
 
     args = parser.parse_args()
-    
-    write_new_config = config.check_config_and_set_output(args)
-#-------------------
-    # set up the logger
-    if args.logger_quiet is not None:
-        config.data['log_level'] = args.logger_quiet
 
-    numeric_level = getattr(logging, config.data['log_level'], None)
-    if not isinstance(numeric_level, int):
-        raise ValueError('Invalid log level: %s' % config.data['log_level'])
+    try:
+        write_new_config = config.check_config_and_set_output(args)
+    except AmplishotConfigError, e:
+        print e.msg
+    else:
+        if args.logger_quiet is not None:
+            config.data['log_level'] = args.logger_quiet
 
-    logging.basicConfig(level=numeric_level,
-            format='%(levelname)s\t%(asctime)s\t%(message)s')
+        numeric_level = getattr(logging, config.data['log_level'], None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: %s' % config.data['log_level'])
 
-    #if config.data['log_file'] is not None:
-    #    logging.basicConfig(filename=config.data['log_file'])
+        logging.basicConfig(level=numeric_level,
+                format='%(levelname)s\t%(asctime)s\t%(message)s')
 
-    pipeline(config)
-    if write_new_config:
-        config.write_config()
+        #if config.data['log_file'] is not None:
+        #    logging.basicConfig(filename=config.data['log_file'])
+
+        pipeline(config)
+        if write_new_config:
+            config.write_config()
 
 
 ###############################################################################

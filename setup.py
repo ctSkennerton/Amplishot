@@ -13,5 +13,5 @@ setup(
     license='LICENSE.txt',
     description='Amplishot',
     long_description=open('README.md').read(),
-    requires=['qiime', 'pyyaml'],
+    requires=['qiime', 'pyyaml', 'pysam'],
 )

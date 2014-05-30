@@ -136,28 +136,26 @@ class AmplishotConfig(object):
         ''' check to make sure that programs called by subprocess are present
             in the users path before trying to run them
         '''
-        try:
-            if self.data['otu_clustering_method'] == 'cdhit':
-                self._check_program('cd-hit')
-            else:
-                self._check_program(self.data['otu_clustering_method'])
+        if self.data['otu_clustering_method'] == 'cdhit':
+            self._check_program('cd-hit')
+        else:
+            self._check_program(self.data['otu_clustering_method'])
 
-            if self.data['mapper'] == 'bowtie':
-                self._check_program('bowtie2')
-            else:
-                self._check_program(self.data['mapper'])
+        if self.data['mapper'] == 'bowtie':
+            self._check_program('bowtie2')
+        else:
+            self._check_program(self.data['mapper'])
 
-            if self.data['assembly_method'] == 'velvet':
-                self._check_program('velveth')
-            elif self.data['assembly_method'] == 'ray':
-                self._check_program('Ray')
-            else:
-                self._check_program(self.data['assembly_method'])
+        if self.data['assembly_method'] == 'velvet':
+            self._check_program('velveth')
+        elif self.data['assembly_method'] == 'ray':
+            self._check_program('Ray')
+        else:
+            self._check_program(self.data['assembly_method'])
 
-            self._check_program('samtools')
-            self._check_program('blastn')
-            self._check_program('pear')
-        except
+        self._check_program('samtools')
+        self._check_program('blastn')
+        self._check_program('pear')
 
 
     def populate_from_config_file(self, fp):

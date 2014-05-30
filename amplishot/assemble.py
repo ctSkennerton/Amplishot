@@ -99,14 +99,14 @@ def velvet_constructor(workingdir, params=None, infile='reads.fa',
             os.path.join(workingdir,params['r12'])])
     
     if 's' in params:
-        velveth.extend(['-short', os.path.join(workingdir,params['s'])])
+        velveth.extend(['-fastq','-short', os.path.join(workingdir,params['s'])])
 
 
     velvetg.extend(['-exp_cov', 'auto', '-ins_length', '400'])
     with open(os.devnull, 'w') as dn:
         retcode = subprocess.call(' '.join(velveth), stdout=dn, stderr=dn, shell=True)
         if retcode != 0:
-            raise RuntimeError("Velveth failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(cmd)))
+            raise RuntimeError("Velveth failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(velveth)))
 
         retcode = subprocess.call(' '.join(velvetg), stdout=dn, stderr=dn, shell=True)
         if retcode == 0:
@@ -114,7 +114,7 @@ def velvet_constructor(workingdir, params=None, infile='reads.fa',
             ret['contigs'] = os.path.join(velvetg[1],"contigs.fa")
             return ret
         else:
-            raise RuntimeError("Velvetg failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(cmd)))
+            raise RuntimeError("Velvetg failed to run. exit code = %d\ncmd: %s" % (retcode, ' '.join(velvetg)))
 
 
 

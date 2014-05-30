@@ -117,7 +117,7 @@ def map_to_reference(params, sample_mapping_file):
     """
     mapper_cmd = ['bowtie2']
     for k,v in params.items():
-        mapper_cmd.extend([k,v])
+        mapper_cmd.extend([str(k),str(v)])
 
     samtools_cmd = ['samtools view -SubF 0x904 - | samtools sort -']
     samtools_cmd.append(sample_mapping_file)
@@ -126,9 +126,10 @@ def map_to_reference(params, sample_mapping_file):
     final_cmd = ' '.join(mapper_cmd) + ' | ' + ' '.join(samtools_cmd)
     logging.debug(final_cmd)
 
-    retcode = subprocess.call(final_cmd, shell=True)
-    if retcode != 0:
-        raise RuntimeError("failed to create bam files")
+    with open(os.devnull, 'w') as devnull:
+        retcode = subprocess.call(final_cmd, shell=True, stderr=devnull)
+        if retcode != 0:
+            raise RuntimeError("failed to create bam files")
 
 
 def taxon_partition(samfile, taxonomyFile, rootdir='root'):

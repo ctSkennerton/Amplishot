@@ -115,7 +115,7 @@ class AmplishotConfig(object):
     def _load(self, data):
         return yaml.load(data, Loader=Loader)
 
-    def _check_program(self, prog):
+    def _check_program(self, program):
         def is_exe(fpath):
             return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
@@ -130,7 +130,7 @@ class AmplishotConfig(object):
                 if is_exe(exe_file):
                     return True
 
-        raise AmplishotProgramNotFoundError('Failed to find %s in your PATH. Is it installed?' % (prog,))
+        raise AmplishotProgramNotFoundError('Failed to find %s in your PATH. Is it installed?' % (program,))
 
     def _check_required_programs(self):
         ''' check to make sure that programs called by subprocess are present
@@ -179,10 +179,10 @@ class AmplishotConfig(object):
         with open(outfp, 'w') as fp:
             fp.write(str(self))
 
-    def _set_path_to_absolute(self, fp, create=False):
+    def _set_path_to_absolute(self, fp, create=False, must_exist=True):
         fp = os.path.expanduser(fp)
         fp = os.path.abspath(fp)
-        if not os.path.exists(fp):
+        if must_exist and not os.path.exists(fp):
             if create:
                 try:
                     os.makedirs(fp)
@@ -209,36 +209,38 @@ class AmplishotConfig(object):
             os.makedirs(root_dir)
 
         try:
-            self.data['nieghbours_file'] =\
-                self._set_path_to_absolute(self.data['nieghbours_file'])
+            self.data['neighbours_file'] =\
+                self._set_path_to_absolute(self.data['neighbours_file'])
             self.data['taxonomy_file'] =\
                 self._set_path_to_absolute(self.data['taxonomy_file'])
             self.data['mapper_database'] =\
-                self._set_path_to_absolute(self.data['mapper_database'])
+                self._set_path_to_absolute(self.data['mapper_database'],
+                        must_exist=False)
             self.data['blast_db'] =\
-                self._set_path_to_absolute(self.data['blast_db'])
+                self._set_path_to_absolute(self.data['blast_db'],
+                        must_exist=False)
         except KeyError:
-            raise AmplishotConfigError('one or more compulsory files have not \
-                    been given on the command line or in the config file. \
-                    Please check that you have defined the nieghbours_file, \
-                    taxonomy_file, mapper_database, aligner_template and \
-                    blast_db and that they point to valid files')
+            raise AmplishotConfigError('one or more compulsory files have not '\
+                    'been given on the command line or in the config file. '\
+                    'Please check that you have defined the neighbours_file, '\
+                    'taxonomy_file, mapper_database and '\
+                    'blast_db and that they point to valid files')
 
         # not compulsory files but if present fix the paths
         try:
             self.data['aligner_template'] =\
                 self._set_path_to_absolute(self.data['aligner_template'])
-        except KeyError:
+        except (KeyError, AttributeError):
             pass
 
         for i in range(len(self.data['input_raw_reads'])):
             f = self.data['input_raw_reads'][i]
             if isinstance(f, list):
                 if len(f) != 2:
-                    raise AmplishotConfigError('The value for each\
-                            input_raw_read line must be either a single file\
-                            path or a list of two files, one for each end of\
-                            the fragment')
+                    raise AmplishotConfigError('The value for each '\
+                            'input_raw_read line must be either a single file '\
+                            'path or a list of two files, one for each end of '\
+                            'the fragment')
                 f[0] = self._set_path_to_absolute(f[0])
                 f[1] = self._set_path_to_absolute(f[1])
             else:

@@ -44,7 +44,7 @@ class MiniSamRead(object):
     ''' Stores some of the info from the sam file alignments without all the
         crud
     '''
-    def __init__(self, _name, _seq, _qual, _ref, _flag, _pos, _rnext, _pnext):
+    def __init__(self, _name, _seq, _qual, _ref, _flag, _pos, _rnext='', _pnext=-1):
         self.qname = _name
         self.flag = _flag
         self.rname = _ref

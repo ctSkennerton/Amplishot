@@ -535,27 +535,28 @@ class TaxonSegregator(object):
         '''
         track = pysam.Samfile(sam, "rb")
         for aln in track.fetch( until_eof = True ):
-            perc = float(self.qlen - self.tags['NM']) / float(self.qlen)
-            this_read_cutoff_index = 0
+            perc = float(aln.qlen - aln.opt('NM')) / float(aln.qlen)
+            this_read_cutoff = -1
             for i in self.cutoffs:
                 if perc >= i:
-                    this_read_cutoff_index = i
+                    this_read_cutoff = i
                 else:
                     break
 
             msr = amplishot.parse.sam.MiniSamRead(aln.qname,
                     aln.seq,
                     aln.qual,
-                    track.getrname(aln.tid),
+                    str(track.references[aln.tid]),
                     aln.flag,
-                    aln.pos,
-                    track.getrname(aln.rnext),
-                    aln.pnext)
+                    aln.pos)
+            if aln.is_paired:
+                msr.rnext = track.getrname(aln.rnext)
+                msr.pnext = aln.pnext
 
             try:
-                self.taxon_mapping[this_read_cutoff_index][msr.rname].append(msr)
+                self.taxon_mapping[this_read_cutoff][msr.rname].append(msr)
             except KeyError:
-                self.taxon_mapping[this_read_cutoff_index][msr.rname] = [msr]
+                self.taxon_mapping[this_read_cutoff][msr.rname] = [msr]
 
 
     def parse_sam2(self, sam):
@@ -574,8 +575,8 @@ class TaxonSegregator(object):
             if not read.is_unmapped():
                 percent_id = read.percent_identity()
                 this_read_cutoff_index = 0
-                for i in self.cutoffs:
-                    if percent_id >= i:
+                for i, j in enumerate(self.cutoffs):
+                    if percent_id >= j:
                         this_read_cutoff_index = i
                     else:
                         break

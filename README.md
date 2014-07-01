@@ -10,15 +10,25 @@ with *de novo* reconstruction of full-length 16S rRNA genes from specially
 constructed "Amplishot" Illumina sequencing libraries or from
 metagenomes. 
 ## Dependancies
-*   [Qiime](http://qiime.org) - tested only on version 1.6.0
+* [Qiime](http://qiime.org) - tested only on version 1.6.0 & 1.8.0
 *	[bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) - tested with version 2.0.5
+* [Pear](http://www.exelixis-lab.org/pear)
+* [pyYAML](http://pyyaml.org/)
+* numpy
+
+
+## OTU Clustering Dependancies
 *	[cd-hit](http://cd-hit.org) - tested with 4.5.4
+* uclust - now packaged with Qiime if using version 1.8.0 or higher.
+  NOTE: uclust is not the same as usearch although google searches for
+  the former will return the latter
 
 ### Assembly Dependancies
 You must have one of the following
-*	[phrap](http://www.phrap.org/) - tested with version 1.09518
-*   [Ray](http://denovoassembler.sourceforge.net/) - tested with version 2.3.1
-*   [velvet](https://www.ebi.ac.uk/~zerbino/velvet/)
+*	[phrap](http://www.phrap.org/) - tested with version 1.09518 (not
+  currently recomented as it does not scale)
+* [Ray](http://denovoassembler.sourceforge.net/) - tested with version 2.3.1
+* [velvet](https://www.ebi.ac.uk/~zerbino/velvet/)
 
 ## Installation
 You can either download the [latest source code](https://github.com/ctSkennerton/Amplishot)
@@ -68,10 +78,7 @@ to the current configuration set.
 			-
 				- /full/path/to/sample2.1.fq
 				- /full/path/to/sample2.2.fq
-				
-*	`pairtig_read_files`: Input pairtig files to use for Amplishot.  This option is
-	mutually exclusive with `input_raw_reads`.  By using this option you can generate
-	pairtigs outside of Amplishot
+
 *	`aliases`: Use this option to set the sample names to be used in the output files.
 	By default the filename is used without the file extension.  The form of the values
 	must be a YAML list specified by either:
@@ -82,6 +89,10 @@ to the current configuration set.
 		
 		aliases: [alias1, alias2]
 
+* `skip_pairtigs`: specify true or false whether you would like to
+  assemble paired reads first before mapping onto the reference 16S rDNA
+  database. This option is highly recomended for samples that are from
+  full metagenomes that will likely be mostly from non-rDNA source
 *	`minimum_pairtig_length`: Specify the minimum length that pairtigs must be.  This 
 	option has no effect if the `pairtig_read_files` option is set. (default: 350)
 *	`pair_overlap_length`: The minimum number of nucleotides that two reads from a 
@@ -101,12 +112,14 @@ to the current configuration set.
 	read depth) for a taxon; the second number is the number of bases that must 
 	contain the minimum coverage. (default: [2, 1000])
 *	`assembly_method`: *de novo* 16S reconstruction method.  The only valid
-	values are `phrap` and  `fermi`
+	values are `phrap`, `ray` and  `velvet`
 *	`minimum_reconstruction_length`: minimum length of sequences that are defined 
 	as 'full length' and used in taxonomic assignment.
 *	`otu_clustering_method`: Currently the only valid value is `cdhit`
 *	`otu_clustering_similarity`: the similarity used for clustering full-length 
 	sequences from different samples into OTUs 
+* `neighbours_file`: A file that calculate the phylogenetic distanse
+  between two separate reference sequences
 
 ### Program related blocks
 Some of the underlying programs used in Amplishot can be controlled precisely by
@@ -119,11 +132,6 @@ Currently program related blocks are available for both the assembly and
 taxonomy assignment parts of Amplishot
 
 #### Assembly 
-
-##### Fermi
-Specify options using the `fermi` key.
-*   `kmer_length`: The kmer length used for assembly. The bigger the
-    number the more stringent the assembly.  
 
 ##### Phrap
  Specify extra options

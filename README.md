@@ -13,8 +13,12 @@ metagenomes.
 * [Qiime](http://qiime.org) - tested only on version 1.6.0 & 1.8.0
 *	[bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) - tested with version 2.0.5
 * [Pear](http://www.exelixis-lab.org/pear)
+* [samtools](http://samtools.github.io/)
 * [pyYAML](http://pyyaml.org/)
 * numpy
+* pysam
+* [biom](http://biom-format.org/) - version 1 required (most likely version 2 will break things;
+  only tested with version 1)
 
 
 ## OTU Clustering Dependancies

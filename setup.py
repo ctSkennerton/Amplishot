@@ -2,7 +2,7 @@ from distutils.core import setup, Extension
 
 setup(
     name='Amplishot',
-    version='0.10.0',
+    version='0.10.1',
     author='Connor Skennerton',
     author_email='c.skennerton@gmail.com',
     packages=['amplishot', 'amplishot.test',
@@ -13,5 +13,5 @@ setup(
     license='LICENSE.txt',
     description='Amplishot',
     long_description=open('README.md').read(),
-    requires=['qiime', 'pyyaml', 'pysam'],
+    requires=['qiime', 'pyyaml', 'pysam', 'biom (<2.0)'],
 )

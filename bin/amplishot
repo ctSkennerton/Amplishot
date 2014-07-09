@@ -57,9 +57,10 @@ def align_seqs(config, input_fasta_fp):
         if template_alignment is None:
             raise KeyError()
     except KeyError:
-        logging.warning('\'aligner_termplate\' not specified, but required for' \
-                'alignment step. PyNAST will not be executed and the' \
-                'reconstructed sequences will not be aligned or chimera checked')
+        logging.warning('\'aligner_termplate\' not specified in the '\
+                'configuration file or on the command line, but is required for' \
+                ' the alignment step. PyNAST will not be executed and the' \
+                ' reconstructed sequences will not be aligned or chimera checked')
         raise AmplishotConfigError()
 
     logging.info("Aligning rep set...")

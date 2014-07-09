@@ -37,10 +37,6 @@ import subprocess
 from cogent.app.util import FilePath
 from amplishot.app.cd_hit import CD_HIT_EST
 from amplishot.app.phrap import Phrap
-from amplishot.app.fermi import Fermi
-from amplishot.app.velvet import Velvetg, Velveth
-from amplishot.app.spades import Spades
-from amplishot.app.ray import Ray
 import amplishot.parse.fastx
 ###############################################################################
 
